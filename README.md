@@ -38,11 +38,11 @@ The platform aims to make the student housing process more transparent, organize
 [https://docs.google.com/document/d/1kyJ3a-__SnDEJlsWqzD_rssGZyYHQ51zwOtq3SbNtmA/edit?tab=t.0]
 
 👨‍💻 Team Members
-Name	                 Student ID
-MD Ratul Hasan Sarkar  23201562
-Aurora Bintay Mostafa  23101491 
-S.M.Saifuzzaman        23201243
-Fuad Mohammed Jawad    23201555
+
+MD Ratul Hasan Sarkar -- 23201562
+Aurora Bintay Mostafa -- 23101491 
+S.M.Saifuzzaman       -- 23201243
+Fuad Mohammed Jawad   -- 23201555
 
 
 🛠 Tech Stack
@@ -67,3 +67,4 @@ Technologies used:
 Database used:
 
 1. MongoDB
+
