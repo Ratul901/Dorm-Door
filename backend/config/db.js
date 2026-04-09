@@ -1,13 +1,8 @@
-const mongoose = require("mongoose");
+import mongoose from 'mongoose'
+import { env } from './env.js'
 
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("MongoDB Connected");
-  } catch (error) {
-    console.log(error);
-    process.exit(1);
-  }
-};
-
-module.exports = connectDB;
+export async function connectDatabase() {
+  await mongoose.connect(env.mongoUri)
+  // eslint-disable-next-line no-console
+  console.log('MongoDB connected')
+}

@@ -1,23 +1,18 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const connectDB = require("./config/db");
+import app from './app.js'
+import { connectDatabase } from './config/db.js'
+import { env } from './config/env.js'
 
-dotenv.config(); // must be before connectDB()
+async function bootstrap() {
+  await connectDatabase()
 
-connectDB();
+  app.listen(env.port, () => {
+    // eslint-disable-next-line no-console
+    console.log(`Server listening on http://localhost:${env.port}`)
+  })
+}
 
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Dorm Door Backend Running");
-});
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+bootstrap().catch((error) => {
+  // eslint-disable-next-line no-console
+  console.error('Failed to start server:', error)
+  process.exit(1)
+})
