@@ -438,19 +438,199 @@ function StatBox({ icon, label, value, chip, chipClass = 'bg-[#dceaf3] text-[#46
 }
 
 function DashboardPage({ setActivePage }) {
-  const docs = [
-    ['Student ID Card', 'Uploaded March 25', 'Verified', true],
-    ['Passport Photo', 'Uploaded March 25', 'Verified', true],
-    ['Admission Certificate', 'Missing digital copy', 'Pending', false],
-  ]
+  const { token, user } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const [overview, setOverview] = useState(null)
+  const [profile, setProfile] = useState(() => mapUserToProfileForm(user || {}))
+  const [documents, setDocuments] = useState([])
+  const [notifications, setNotifications] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadDashboard() {
+      setLoading(true)
+      setError('')
+
+      try {
+        if (isDemoUser) {
+          const demoProfile = mapUserToProfileForm(user || {})
+          const demoOverview = {
+            applications: 2,
+            documents: 2,
+            maintenanceTickets: 1,
+            supportTickets: 1,
+            reviews: 1,
+            unreadNotifications: 2,
+            recentApplications: [
+              {
+                _id: 'demo-app-1',
+                dorm: { name: 'The Zenith Suite', block: 'Block A' },
+                room: { roomNumber: '402-A', type: 'Premium Studio' },
+                status: 'Under Review',
+                createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+              },
+            ],
+          }
+          const demoDocuments = [
+            {
+              _id: 'demo-doc-1',
+              category: 'Student ID',
+              fileName: 'student-id-card.pdf',
+              status: 'Verified',
+              updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+            {
+              _id: 'demo-doc-2',
+              category: 'Passport Photo',
+              fileName: 'passport-photo.jpg',
+              status: 'Pending',
+              updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ]
+          const demoNotifications = [
+            {
+              _id: 'demo-notification-1',
+              title: 'Application Updated',
+              message: 'Your latest room application is now under review.',
+              createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+            },
+            {
+              _id: 'demo-notification-2',
+              title: 'Document Review',
+              message: 'Passport photo has been verified successfully.',
+              createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+            },
+          ]
+
+          if (!mounted) return
+          setProfile(demoProfile)
+          setOverview(demoOverview)
+          setDocuments(demoDocuments)
+          setNotifications(demoNotifications)
+          return
+        }
+
+        const [{ data: overviewData }, { data: profileData }, { data: documentData }, { data: notificationData }] =
+          await Promise.all([
+            api.get('/dashboard/student'),
+            api.get('/profile'),
+            api.get('/documents'),
+            api.get('/notifications'),
+          ])
+
+        if (!mounted) return
+        setOverview(overviewData.overview || null)
+        setProfile(mapUserToProfileForm(profileData.user || {}))
+        setDocuments(documentData.documents || [])
+        setNotifications((notificationData.notifications || []).slice(0, 4))
+      } catch (requestError) {
+        if (!mounted) return
+        setError(requestError.response?.data?.message || 'Failed to load dashboard data')
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadDashboard()
+    return () => {
+      mounted = false
+    }
+  }, [isDemoUser, token, user])
+
+  const recentApplication = overview?.recentApplications?.[0] || null
+  const applicationStatus = recentApplication?.status || 'No application yet'
+  const applicationDormName = recentApplication?.dorm?.name || 'No dorm selected'
+  const applicationBlock = recentApplication?.dorm?.block || 'No block yet'
+  const roomType = recentApplication?.room?.type || 'Room pending'
+  const submittedDate = recentApplication?.createdAt
+    ? new Date(recentApplication.createdAt).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : 'Submit your first application to begin'
+
+  const requiredDocuments = [
+    'Student ID',
+    'Passport Photo',
+    'Admission Certificate',
+  ].map((category) => {
+    const matchingDocument = documents.find((item) => item.category === category)
+    return {
+      key: category,
+      title: category,
+      item: matchingDocument || null,
+      done: matchingDocument ? matchingDocument.status === 'Verified' : false,
+    }
+  })
+
+  const verifiedDocumentCount = requiredDocuments.filter((item) => item.done).length
+  const pendingDocumentCount = requiredDocuments.filter((item) => !item.item || item.item.status !== 'Verified').length
+
+  const recentActivity = []
+  if (recentApplication) {
+    recentActivity.push({
+      key: `application-${recentApplication._id}`,
+      title: `Application ${recentApplication.status?.toLowerCase() || 'created'}`,
+      time: recentApplication.createdAt,
+    })
+  }
+  notifications.slice(0, 2).forEach((notification) => {
+    recentActivity.push({
+      key: `notification-${notification._id}`,
+      title: notification.title,
+      time: notification.createdAt,
+    })
+  })
+
+  const formatShortDate = (value) => {
+    if (!value) return 'Recently'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'Recently'
+    return parsed.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
 
   return (
     <PageFrame placeholder="Search resources...">
+      {error ? <p className="mb-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+
       <div className="grid grid-cols-4 gap-5">
-        <StatBox icon="inventory_2" label="Application" value="Review Phase" chip="Pending" chipClass="bg-[#eef0ff] text-[#4a5fd2]" />
-        <StatBox icon="apartment" label="Dorm" value="The Zenith Suite" chip="Reserved" />
-        <StatBox icon="description" label="Documents" value="Verified" chip="2/3 Done" />
-        <StatBox icon="notifications_active" label="Alerts" value="Action Needed" chip="3 New" chipClass="bg-[#ffe8e8] text-[#c93131]" />
+        <StatBox
+          icon="inventory_2"
+          label="Application"
+          value={loading ? 'Loading...' : applicationStatus}
+          chip={`${overview?.applications ?? 0} Total`}
+          chipClass="bg-[#eef0ff] text-[#4a5fd2]"
+        />
+        <StatBox
+          icon="apartment"
+          label="Dorm"
+          value={loading ? 'Loading...' : applicationDormName}
+          chip={applicationBlock}
+        />
+        <StatBox
+          icon="description"
+          label="Documents"
+          value={loading ? 'Loading...' : `${verifiedDocumentCount}/3 Verified`}
+          chip={pendingDocumentCount > 0 ? `${pendingDocumentCount} Pending` : 'Complete'}
+        />
+        <StatBox
+          icon="notifications_active"
+          label="Alerts"
+          value={loading ? 'Loading...' : `${overview?.unreadNotifications ?? 0} Unread`}
+          chip={notifications[0]?.title || 'Up to date'}
+          chipClass="bg-[#ffe8e8] text-[#c93131]"
+        />
       </div>
 
       <div className="mt-8 grid grid-cols-[1.8fr_0.9fr] gap-8">
@@ -459,14 +639,14 @@ function DashboardPage({ setActivePage }) {
             <div className="grid grid-cols-[1.5fr_0.9fr] gap-8">
               <div>
                 <p className="text-[12px] font-bold uppercase tracking-[0.25em] text-white/70">Current Application</p>
-                <h2 className="mt-4 text-[44px] font-extrabold leading-[1.02] tracking-[-0.06em]">The Zenith Suite</h2>
+                <h2 className="mt-4 text-[44px] font-extrabold leading-[1.02] tracking-[-0.06em]">{loading ? 'Loading...' : applicationDormName}</h2>
                 <div className="mt-4 flex gap-3 text-[12px] font-bold uppercase tracking-[0.12em]">
-                  <span className="rounded-full bg-white/15 px-4 py-2">Block A</span>
-                  <span className="rounded-full bg-white/15 px-4 py-2">Single Room</span>
+                  <span className="rounded-full bg-white/15 px-4 py-2">{applicationBlock}</span>
+                  <span className="rounded-full bg-white/15 px-4 py-2">{roomType}</span>
                 </div>
                 <div className="mt-8 flex items-center gap-5">
-                  <div className="rounded-2xl bg-white/15 px-5 py-3 text-[24px] font-bold tracking-[-0.04em]">Under Review</div>
-                  <p className="text-[14px] text-white/75">Submitted March 25</p>
+                  <div className="rounded-2xl bg-white/15 px-5 py-3 text-[24px] font-bold tracking-[-0.04em]">{applicationStatus}</div>
+                  <p className="text-[14px] text-white/75">{submittedDate}</p>
                 </div>
               </div>
 
@@ -474,9 +654,15 @@ function DashboardPage({ setActivePage }) {
                 <p className="text-[12px] font-bold uppercase tracking-[0.22em] text-white/75">Assigned Room</p>
                 <div className="mt-4 rounded-[22px] border border-dashed border-white/20 px-4 py-10 text-center text-white/65">
                   <Icon name="meeting_room" className="text-[36px]" />
-                  <p className="mt-4 text-[14px]">Pending assignment</p>
+                  <p className="mt-4 text-[14px]">{recentApplication?.room?.roomNumber || 'Pending assignment'}</p>
                 </div>
-                <button type="button" className="mt-5 w-full rounded-2xl bg-white py-3.5 font-bold text-[#0c56d0]">View Timeline</button>
+                <button
+                  type="button"
+                  onClick={() => setActivePage('applications')}
+                  className="mt-5 w-full rounded-2xl bg-white py-3.5 font-bold text-[#0c56d0]"
+                >
+                  View Timeline
+                </button>
               </div>
             </div>
           </section>
@@ -484,17 +670,25 @@ function DashboardPage({ setActivePage }) {
           <section className="mt-8 rounded-[28px] bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] ring-1 ring-[#eeebea]">
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-[17px] font-extrabold tracking-[-0.04em]">Required Documents</h3>
-              <span className="rounded-full bg-[#f1efee] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280]">Step 2 of 3</span>
+              <button
+                type="button"
+                onClick={() => setActivePage('documents')}
+                className="rounded-full bg-[#f1efee] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#6b7280] transition hover:bg-[#e8e2df]"
+              >
+                Open Documents
+              </button>
             </div>
             <div className="space-y-4">
-              {docs.map(([title, sub, status, done]) => (
-                <div key={title} className={`flex items-center gap-4 rounded-[22px] px-5 py-5 ${done ? 'bg-[#fbfbfb]' : 'bg-[#fff4f4]'}`}>
+              {requiredDocuments.map(({ key, title, item, done }) => (
+                <div key={key} className={`flex items-center gap-4 rounded-[22px] px-5 py-5 ${done ? 'bg-[#fbfbfb]' : 'bg-[#fff4f4]'}`}>
                   <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${done ? 'bg-[#eef3ff] text-[#0c56d0]' : 'bg-[#ffe6e6] text-[#d33434]'}`}>
                     <Icon name={done ? 'badge' : 'description'} />
                   </div>
                   <div className="flex-1">
                     <p className="text-[14px] font-bold">{title}</p>
-                    <p className={`text-[13px] ${done ? 'text-[#7b818c]' : 'text-[#c73535]'}`}>{sub}</p>
+                    <p className={`text-[13px] ${done ? 'text-[#7b818c]' : 'text-[#c73535]'}`}>
+                      {item ? `${item.status || 'Pending'} • ${item.fileName}` : 'Missing digital copy'}
+                    </p>
                   </div>
                   {done ? (
                     <span className="rounded-full bg-[#eef5ff] px-4 py-2 text-[12px] font-bold text-[#0c56d0]">Verified</span>
@@ -517,22 +711,42 @@ function DashboardPage({ setActivePage }) {
               <button type="button" onClick={() => setActivePage('profile')} className="text-[12px] font-bold text-[#0c56d0]">EDIT</button>
             </div>
             <div className="text-center">
-              <Avatar src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80" className="mx-auto h-24 w-24 ring-4 ring-[#f0edec]" />
-              <h4 className="mt-4 text-[17px] font-extrabold tracking-[-0.04em]">Alex Thompson</h4>
-              <p className="mt-1 text-[13px] font-semibold text-[#0c56d0]">ID: #STU-2024098</p>
+              <Avatar
+                src={user?.profileImage || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80'}
+                className="mx-auto h-24 w-24 ring-4 ring-[#f0edec]"
+              />
+              <h4 className="mt-4 text-[17px] font-extrabold tracking-[-0.04em]">{profile.name || user?.name || 'New Student'}</h4>
+              <p className="mt-1 text-[13px] font-semibold text-[#0c56d0]">ID: {profile.studentId || 'Not assigned yet'}</p>
             </div>
             <div className="mt-6 space-y-3 border-t border-[#efebea] pt-5 text-[13px]">
-              <div className="flex justify-between"><span className="text-[#7b818c]">Department</span><span className="font-semibold">Architecture &amp; Design</span></div>
-              <div className="flex justify-between"><span className="text-[#7b818c]">Phone</span><span className="font-semibold">+1 (555) 012-3456</span></div>
-              <div className="flex justify-between"><span className="text-[#7b818c]">Email</span><span className="font-semibold">a.thompson@atelier.edu</span></div>
+              <div className="flex justify-between"><span className="text-[#7b818c]">Department</span><span className="font-semibold">{profile.department || 'Add in profile'}</span></div>
+              <div className="flex justify-between"><span className="text-[#7b818c]">Phone</span><span className="font-semibold">{profile.phone || 'Add in profile'}</span></div>
+              <div className="flex justify-between"><span className="text-[#7b818c]">Email</span><span className="font-semibold">{profile.email || user?.email || 'No email'}</span></div>
             </div>
           </section>
 
           <section className="card-hover rounded-[28px] bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] ring-1 ring-[#eeebea]">
             <h3 className="text-[17px] font-extrabold tracking-[-0.04em]">Recent Activity</h3>
             <div className="mt-5 space-y-5 text-[13px]">
-              <div className="flex gap-4"><span className="mt-2 h-2.5 w-2.5 rounded-full bg-[#0c56d0]" /><div><p className="font-bold">Application received</p><p className="text-[#7b818c]">Mar 25, 10:30 AM</p></div></div>
-              <div className="flex gap-4"><span className="mt-2 h-2.5 w-2.5 rounded-full bg-[#9ca3af]" /><div><p className="font-bold">Documents verified</p><p className="text-[#7b818c]">Mar 26, 02:15 PM</p></div></div>
+              {recentActivity.length === 0 ? (
+                <div className="flex gap-4">
+                  <span className="mt-2 h-2.5 w-2.5 rounded-full bg-[#9ca3af]" />
+                  <div>
+                    <p className="font-bold">No recent activity yet</p>
+                    <p className="text-[#7b818c]">Create your first application or upload documents to get started.</p>
+                  </div>
+                </div>
+              ) : (
+                recentActivity.map((item, index) => (
+                  <div key={item.key} className="flex gap-4">
+                    <span className={`mt-2 h-2.5 w-2.5 rounded-full ${index === 0 ? 'bg-[#0c56d0]' : 'bg-[#9ca3af]'}`} />
+                    <div>
+                      <p className="font-bold">{item.title}</p>
+                      <p className="text-[#7b818c]">{formatShortDate(item.time)}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </section>
 
@@ -548,7 +762,7 @@ function DashboardPage({ setActivePage }) {
         </div>
       </div>
 
-      <p className="mt-10 text-center text-[11px] uppercase tracking-[0.35em] text-[#7a8088]">Â© 2024 The Atelier Student Housing â€¢ Academic Elite Standard</p>
+      <p className="mt-10 text-center text-[11px] uppercase tracking-[0.35em] text-[#7a8088]">© 2024 Dorm Door Student Housing</p>
     </PageFrame>
   )
 }
@@ -2653,7 +2867,6 @@ export default function StudentPortal() {
     </div>
   )
 }
-
 
 
 
