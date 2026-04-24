@@ -20,7 +20,8 @@ function AdminPortal() {
       <Route path="documents" element={<DocumentsPage />} />
       <Route path="availability" element={<AvailabilityPage />} />
       <Route path="support" element={<SupportPage />} />
-      <Route path="settings" element={<SettingsPage />} />
+      <Route path="profile" element={<SettingsPage />} />
+      <Route path="settings" element={<Navigate to="/admin/profile" replace />} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes>
   )

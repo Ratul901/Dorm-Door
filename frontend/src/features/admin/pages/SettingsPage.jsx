@@ -4,6 +4,17 @@ import { topbarAvatars } from '../data/dashboardData'
 import Icon from '../components/Icon'
 import { api } from '../../../api/client'
 
+function AdminAvatar({ className = '' }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`flex items-center justify-center rounded-xl bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
+    >
+      A
+    </div>
+  )
+}
+
 function Field({ label, value, onChange, accent = false, type = 'text', readOnly = false }) {
   return (
     <div className="space-y-1">
@@ -48,7 +59,6 @@ function SettingsPage() {
   })
 
   const [preferences, setPreferences] = useState({
-    darkMode: false,
     notificationFrequency: 'Instant',
     defaultLanguage: 'English (US)',
     systemEmail: 'system@atelier.edu',
@@ -171,9 +181,9 @@ function SettingsPage() {
       <div className="mx-auto max-w-6xl">
         <header className="mb-12 flex items-center justify-between">
           <div>
-            <h2 className="text-5xl font-extrabold tracking-tight">Settings</h2>
-            <p className="mt-1 text-sm text-secondary">Configure your administrative environment and personal profile.</p>
-            {loading ? <p className="mt-2 text-sm text-secondary">Loading settings...</p> : null}
+            <h2 className="text-5xl font-extrabold tracking-tight">Profile</h2>
+            <p className="mt-1 text-sm text-secondary">Manage your administrative environment and personal profile.</p>
+            {loading ? <p className="mt-2 text-sm text-secondary">Loading profile...</p> : null}
             {message ? <p className="mt-2 text-sm font-semibold text-primary">{message}</p> : null}
             {error ? <p className="mt-2 text-sm font-semibold text-error">{error}</p> : null}
           </div>
@@ -186,7 +196,7 @@ function SettingsPage() {
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
           <section className="md:col-span-8 rounded-xl border border-[#ece7e4] bg-white p-8 flex flex-col md:flex-row gap-8 items-start">
             <div className="relative">
-              <img alt="Admin profile" className="h-32 w-32 rounded-xl object-cover" src={profile.profileImage || topbarAvatars.admin} />
+              <AdminAvatar className="h-32 w-32 text-5xl" />
               <button type="button" className="absolute -bottom-2 -right-2 rounded-lg bg-primary p-2 text-white shadow-lg"><Icon name="edit" className="text-sm" /></button>
             </div>
             <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 w-full">
@@ -200,10 +210,6 @@ function SettingsPage() {
           <section className="md:col-span-4 rounded-xl bg-[#f0edec] p-8 space-y-8">
             <div className="space-y-4">
               <h3 className="text-lg font-bold flex items-center gap-2"><Icon name="tune" className="text-primary" /> Preferences</h3>
-              <div className="flex items-center justify-between rounded-lg bg-white p-3">
-                <span className="text-sm font-semibold">Dark Mode</span>
-                <Toggle checked={preferences.darkMode} onChange={() => setPreferences((prev) => ({ ...prev, darkMode: !prev.darkMode }))} />
-              </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Notification Frequency</label>
                 <div className="mt-2 grid grid-cols-2 gap-2">

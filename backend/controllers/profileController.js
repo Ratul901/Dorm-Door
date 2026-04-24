@@ -14,6 +14,7 @@ export const getProfile = asyncHandler(async (req, res) => {
 export const updateProfile = asyncHandler(async (req, res) => {
   const allowedFields = [
     'name',
+    'gender',
     'phone',
     'department',
     'university',

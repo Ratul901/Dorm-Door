@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import PageLayout from '../../components/layout/PageLayout'
 import { useAuth } from '../../context/AuthContext'
@@ -24,14 +24,49 @@ const initialForm = {
   emergencyPhone: '',
 }
 
+function normalizeDormName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^the\s+/, '')
+    .replace(/\s+/g, ' ')
+}
+
+function toDateInputValue(value) {
+  const parsed = value ? new Date(value) : new Date()
+  if (Number.isNaN(parsed.getTime())) return ''
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function normalizeGender(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'male') return 'Male'
+  if (normalized === 'female') return 'Female'
+  return 'Prefer not to say'
+}
+
 function ApplyNowPage() {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, token, user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const prefilledDormRef = useRef(false)
+  const profilePrefilledRef = useRef(false)
 
   const [form, setForm] = useState(initialForm)
   const [dorms, setDorms] = useState([])
   const [rooms, setRooms] = useState([])
   const [message, setMessage] = useState('')
+  const [prefillMessage, setPrefillMessage] = useState('')
+  const todayDateValue = useMemo(() => toDateInputValue(), [])
+
+  const isDemoUser = token === 'dormdoor_demo_token'
+
+  const requestedDormId = searchParams.get('dormId') || ''
+  const requestedDormName = searchParams.get('dormName') || ''
 
   useEffect(() => {
     api.get('/dorms').then(({ data }) => setDorms(data.dorms)).catch(() => setDorms([]))
@@ -50,19 +85,83 @@ function ApplyNowPage() {
   }, [form.dorm])
 
   useEffect(() => {
-    if (user && isAuthenticated) {
+    if (!isAuthenticated || profilePrefilledRef.current) return
+
+    let mounted = true
+
+    const hydrateProfile = (profileUser = {}) => {
+      if (!mounted) return
       setForm((prev) => ({
         ...prev,
-        fullName: user.name || '',
-        email: user.email || '',
-        phone: user.phone || '',
-        studentId: user.studentId || '',
-        department: user.department || '',
-        university: user.university || '',
-        address: user.address || '',
+        fullName: prev.fullName || profileUser.name || '',
+        email: prev.email || profileUser.email || '',
+        phone: prev.phone || profileUser.phone || '',
+        studentId: prev.studentId || profileUser.studentId || '',
+        department: prev.department || profileUser.department || '',
+        university: prev.university || profileUser.university || '',
+        gender: prev.gender || normalizeGender(profileUser.gender),
+        address: prev.address || profileUser.address || '',
+        emergencyName: prev.emergencyName || profileUser.emergencyContact?.name || '',
+        emergencyRelation: prev.emergencyRelation || profileUser.emergencyContact?.relation || '',
+        emergencyPhone: prev.emergencyPhone || profileUser.emergencyContact?.phone || '',
       }))
     }
-  }, [user, isAuthenticated])
+
+    async function prefillProfile() {
+      if (isDemoUser) {
+        hydrateProfile(user || {})
+        profilePrefilledRef.current = true
+        return
+      }
+
+      try {
+        const { data } = await api.get('/profile')
+        hydrateProfile(data.user || user || {})
+      } catch {
+        hydrateProfile(user || {})
+      } finally {
+        profilePrefilledRef.current = true
+      }
+    }
+
+    prefillProfile()
+
+    return () => {
+      mounted = false
+    }
+  }, [isAuthenticated, isDemoUser, user])
+
+  useEffect(() => {
+    if (prefilledDormRef.current || dorms.length === 0) {
+      return
+    }
+
+    let matchedDorm = null
+    if (requestedDormId) {
+      matchedDorm = dorms.find((dorm) => dorm._id === requestedDormId) || null
+    }
+
+    if (!matchedDorm && requestedDormName) {
+      const requestedNormalized = normalizeDormName(requestedDormName)
+      matchedDorm =
+        dorms.find((dorm) => normalizeDormName(dorm.name) === requestedNormalized) ||
+        dorms.find((dorm) => normalizeDormName(dorm.name).includes(requestedNormalized)) ||
+        dorms.find((dorm) => requestedNormalized.includes(normalizeDormName(dorm.name))) ||
+        null
+    }
+
+    if (matchedDorm) {
+      setForm((prev) => ({
+        ...prev,
+        dorm: prev.dorm || matchedDorm._id,
+      }))
+      setPrefillMessage(`Dorm preselected: ${matchedDorm.name}`)
+    } else if (requestedDormName) {
+      setPrefillMessage(`"${requestedDormName}" is not currently available. Please choose another dorm.`)
+    }
+
+    prefilledDormRef.current = true
+  }, [dorms, requestedDormId, requestedDormName])
 
   const canSubmit = useMemo(() => {
     return form.dorm && form.fullName && form.email && form.studentId && form.emergencyName && form.emergencyPhone
@@ -70,6 +169,15 @@ function ApplyNowPage() {
 
   const handleChange = (event) => {
     const { name, value } = event.target
+    if (name === 'dorm') {
+      setForm((prev) => ({
+        ...prev,
+        dorm: value,
+        room: '',
+      }))
+      return
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -77,7 +185,12 @@ function ApplyNowPage() {
     event.preventDefault()
 
     if (!isAuthenticated) {
-      navigate('/login', { state: { from: { pathname: '/apply-now' } } })
+      navigate('/login', { state: { from: { pathname: `/apply-now${location.search || ''}` } } })
+      return
+    }
+
+    if (form.moveInDate && form.moveInDate < todayDateValue) {
+      setMessage('Move-in date cannot be in the past.')
       return
     }
 
@@ -92,7 +205,7 @@ function ApplyNowPage() {
           studentId: form.studentId,
           department: form.department,
           university: form.university,
-          gender: form.gender,
+          gender: normalizeGender(form.gender),
           address: form.address,
         },
         preferences: {
@@ -109,7 +222,20 @@ function ApplyNowPage() {
       })
 
       setMessage('Application submitted successfully.')
-      setForm(initialForm)
+      setForm((prev) => ({
+        ...initialForm,
+        fullName: prev.fullName,
+        email: prev.email,
+        phone: prev.phone,
+        studentId: prev.studentId,
+        department: prev.department,
+        university: prev.university,
+        gender: prev.gender,
+        address: prev.address,
+        emergencyName: prev.emergencyName,
+        emergencyRelation: prev.emergencyRelation,
+        emergencyPhone: prev.emergencyPhone,
+      }))
     } catch (error) {
       setMessage(error.response?.data?.message || 'Failed to submit application.')
     }
@@ -120,6 +246,7 @@ function ApplyNowPage() {
       <section>
         <h1>Apply Now</h1>
         <p>Submit your dorm application in one place. Student and admin dashboards update instantly.</p>
+        {prefillMessage ? <p className="form-message">{prefillMessage}</p> : null}
       </section>
 
       <form className="form" onSubmit={handleSubmit}>
@@ -178,7 +305,12 @@ function ApplyNowPage() {
           </label>
           <label>
             Gender
-            <input name="gender" value={form.gender} onChange={handleChange} />
+            <select name="gender" value={form.gender} onChange={handleChange}>
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </select>
           </label>
           <label>
             Address
@@ -198,7 +330,7 @@ function ApplyNowPage() {
           </label>
           <label>
             Move-in Date
-            <input name="moveInDate" type="date" value={form.moveInDate} onChange={handleChange} />
+            <input name="moveInDate" type="date" min={todayDateValue} value={form.moveInDate} onChange={handleChange} />
           </label>
           <label>
             Special Requests

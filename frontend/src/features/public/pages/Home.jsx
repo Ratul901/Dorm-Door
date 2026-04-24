@@ -199,7 +199,7 @@ function Home() {
             </div>
             <div className="text-right">
               <p className="text-sm font-bold uppercase tracking-widest text-secondary">
-                Showing {filteredDorms.length} match{filteredDorms.length === 1 ? '' : 'es'}
+                Showing {filteredDorms.length} {filteredDorms.length === 1 ? 'match' : 'matches'}
               </p>
               <button type="button" onClick={goToBrowseWithFilters} className="group mt-2 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary md:ml-auto">
                 Search In Browse

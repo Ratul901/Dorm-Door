@@ -17,10 +17,21 @@ function formatNotificationTimestamp(value) {
   })
 }
 
-function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', profileRole = 'Housing Authority', avatar, brandText = '', showBrand = false }) {
+function RoleAvatar({ symbol = 'A', className = '' }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`flex items-center justify-center rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
+    >
+      {symbol}
+    </div>
+  )
+}
+
+function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', profileRole = 'Housing Authority', avatar: _avatar, brandText = '', showBrand = false }) {
   const navigate = useNavigate()
   const { language, setLanguage } = useLanguage()
-  const { token } = useAuth()
+  const { token, logout } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_admin_notifications'
 
@@ -28,8 +39,10 @@ function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', p
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
 
   const notificationMenuRef = useRef(null)
+  const profileMenuRef = useRef(null)
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.read).length,
@@ -108,6 +121,7 @@ function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', p
   }
 
   const handleNotificationToggle = () => {
+    setShowProfileMenu(false)
     setShowNotifications((current) => {
       const nextOpen = !current
       if (nextOpen) {
@@ -158,13 +172,29 @@ function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', p
 
   const goToSettings = () => {
     setShowNotifications(false)
-    navigate('/admin/settings')
+    setShowProfileMenu(false)
+    navigate('/admin/profile')
+  }
+
+  const handleProfileToggle = () => {
+    setShowNotifications(false)
+    setShowProfileMenu((current) => !current)
+  }
+
+  const signOutFromMenu = () => {
+    setShowProfileMenu(false)
+    logout()
+    navigate('/login', { replace: true })
   }
 
   useEffect(() => {
     function handleOutsideClick(event) {
       if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
         setShowNotifications(false)
+      }
+
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setShowProfileMenu(false)
       }
     }
 
@@ -262,16 +292,45 @@ function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', p
             </div>
           ) : null}
         </div>
-        <button type="button" onClick={goToSettings} className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100">
-          <Icon name="settings" />
-        </button>
+        <div className="relative" ref={profileMenuRef}>
+          <button
+            type="button"
+            onClick={handleProfileToggle}
+            className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100"
+            aria-label="Profile"
+            title="Profile"
+          >
+            <Icon name="person" />
+          </button>
+
+          {showProfileMenu ? (
+            <div className="absolute right-0 top-11 z-50 w-48 rounded-2xl bg-white p-2 shadow-[0_20px_40px_rgba(0,0,0,0.15)] ring-1 ring-[#efebea]">
+              <button
+                type="button"
+                onClick={goToSettings}
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-[#2d3748] transition hover:bg-[#f7f4f3]"
+              >
+                <Icon name="edit" className="text-[18px]" />
+                Profile
+              </button>
+              <button
+                type="button"
+                onClick={signOutFromMenu}
+                className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-[#d03030] transition hover:bg-[#fff1f1]"
+              >
+                <Icon name="logout" className="text-[18px]" />
+                Sign Out
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className="mx-2 h-8 w-px bg-[#e8e1dc]" />
         <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-sm font-semibold text-[#1b1b1b]">{profileName}</p>
             <p className="text-[11px] text-secondary">{profileRole}</p>
           </div>
-          <img src={avatar} alt="Admin" className="h-10 w-10 rounded-full object-cover shadow-sm" />
+          <RoleAvatar symbol="A" className="h-10 w-10 text-base shadow-sm" />
         </div>
       </div>
     </header>

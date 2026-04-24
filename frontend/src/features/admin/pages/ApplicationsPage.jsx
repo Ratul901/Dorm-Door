@@ -65,6 +65,9 @@ function ApplicationsPage() {
   const [statusFilter, setStatusFilter] = useState('All')
 
   const [selectedApplication, setSelectedApplication] = useState(null)
+  const [availableRooms, setAvailableRooms] = useState([])
+  const [roomsLoading, setRoomsLoading] = useState(false)
+  const [selectedRoomId, setSelectedRoomId] = useState('')
   const [nextStatus, setNextStatus] = useState('Pending')
   const [adminNote, setAdminNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -145,6 +148,8 @@ function ApplicationsPage() {
 
   const openDetails = (app) => {
     setSelectedApplication(app)
+    setSelectedRoomId(app.room?._id || '')
+    setAvailableRooms([])
     setNextStatus(app.status || 'Pending')
     setAdminNote(app.adminNote || '')
     setRequestState('')
@@ -152,8 +157,45 @@ function ApplicationsPage() {
 
   const closeDetails = () => {
     setSelectedApplication(null)
+    setSelectedRoomId('')
+    setAvailableRooms([])
     setRequestState('')
   }
+
+  useEffect(() => {
+    if (!selectedApplication?.dorm?._id) return
+
+    let mounted = true
+
+    async function loadAssignableRooms() {
+      setRoomsLoading(true)
+
+      try {
+        const { data } = await api.get('/rooms', {
+          params: {
+            dormId: selectedApplication.dorm._id,
+          },
+        })
+
+        if (!mounted) return
+        setAvailableRooms(data.rooms || [])
+      } catch (requestError) {
+        if (mounted) {
+          setRequestState(requestError.response?.data?.message || 'Failed to load rooms for this dorm.')
+        }
+      } finally {
+        if (mounted) {
+          setRoomsLoading(false)
+        }
+      }
+    }
+
+    loadAssignableRooms()
+
+    return () => {
+      mounted = false
+    }
+  }, [selectedApplication?.dorm?._id])
 
   const handleStatusUpdate = async () => {
     if (!selectedApplication?._id) return
@@ -163,6 +205,7 @@ function ApplicationsPage() {
     try {
       const { data } = await api.patch(`/applications/${selectedApplication._id}/status`, {
         status: nextStatus,
+        room: selectedRoomId || null,
         adminNote,
       })
 
@@ -173,6 +216,7 @@ function ApplicationsPage() {
             ? {
                 ...item,
                 status: updated.status,
+                room: updated.room,
                 adminNote: updated.adminNote,
                 updatedAt: updated.updatedAt || item.updatedAt,
               }
@@ -184,6 +228,7 @@ function ApplicationsPage() {
           ? {
               ...prev,
               status: updated.status,
+              room: updated.room,
               adminNote: updated.adminNote,
               updatedAt: updated.updatedAt || prev.updatedAt,
             }
@@ -404,6 +449,28 @@ function ApplicationsPage() {
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-secondary">
+                Assign Room
+                <select
+                  value={selectedRoomId}
+                  onChange={(event) => setSelectedRoomId(event.target.value)}
+                  disabled={roomsLoading}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <option value="">{roomsLoading ? 'Loading rooms...' : 'Select a room'}</option>
+                  {availableRooms.map((room) => {
+                    const isCurrentRoom = room._id === selectedApplication.room?._id
+                    const isUnavailable = !isCurrentRoom && (room.status === 'Full' || room.status === 'Maintenance')
+                    const seatsLeft = Math.max(0, (room.seatCount || 0) - (room.occupiedSeats || 0))
+                    return (
+                      <option key={room._id} value={room._id} disabled={isUnavailable}>
+                        {room.roomNumber} - {room.type} ({seatsLeft}/{room.seatCount} seats left, {room.status})
+                      </option>
+                    )
+                  })}
+                </select>
+              </label>
+
               <label className="text-sm font-semibold text-secondary">
                 Update Status
                 <select

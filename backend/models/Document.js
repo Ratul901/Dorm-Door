@@ -19,10 +19,48 @@ const documentSchema = new mongoose.Schema(
     fileName: {
       type: String,
       required: true,
+      trim: true,
+      maxlength: 240,
+    },
+    storageType: {
+      type: String,
+      enum: ['url', 'upload'],
+      default: 'url',
     },
     fileUrl: {
       type: String,
-      required: true,
+      trim: true,
+      maxlength: 2048,
+      default: '',
+      required() {
+        return this.storageType === 'url'
+      },
+      validate: {
+        validator(value) {
+          if (this.storageType !== 'url') {
+            return !value || String(value).trim() === ''
+          }
+
+          try {
+            const parsed = new URL(String(value || ''))
+            return ['http:', 'https:'].includes(parsed.protocol) && Boolean(parsed.hostname) && !parsed.username && !parsed.password
+          } catch {
+            return false
+          }
+        },
+        message: 'fileUrl must be a valid http(s) URL when storageType is url',
+      },
+    },
+    mimeType: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+    sizeBytes: {
+      type: Number,
+      min: 0,
+      default: 0,
     },
     status: {
       type: String,

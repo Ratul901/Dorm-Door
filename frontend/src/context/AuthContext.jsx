@@ -13,13 +13,20 @@ const DEMO_USERS = {
     name: 'Demo Student',
     email: 'student@dormdoor.com',
     role: 'student',
+    gender: 'Prefer not to say',
     studentId: 'DD-DEMO-1001',
+    emergencyContact: {
+      name: 'Demo Guardian',
+      relation: 'Guardian',
+      phone: '+8801888888888',
+    },
   },
   'admin@dormdoor.com': {
     _id: 'demo-admin',
     name: 'Demo Admin',
     email: 'admin@dormdoor.com',
     role: 'admin',
+    gender: 'Prefer not to say',
   },
 }
 

@@ -5,12 +5,129 @@ import { Notification } from '../models/Notification.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 
+const APPLICATION_STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested']
+
 async function notify(userId, title, message, type) {
   try {
     await Notification.create({ user: userId, title, message, type })
   } catch {
     // intentionally non-blocking
   }
+}
+
+function normalizeText(value) {
+  return String(value || '').trim()
+}
+
+function normalizeApplicationPayload(body = {}) {
+  const personalInfo = body.personalInfo || {}
+  const emergencyContact = body.emergencyContact || {}
+  const preferences = body.preferences || {}
+
+  return {
+    personalInfo: {
+      fullName: normalizeText(personalInfo.fullName),
+      email: normalizeText(personalInfo.email).toLowerCase(),
+      phone: normalizeText(personalInfo.phone),
+      studentId: normalizeText(personalInfo.studentId),
+      department: normalizeText(personalInfo.department),
+      university: normalizeText(personalInfo.university),
+      gender: normalizeText(personalInfo.gender),
+      address: normalizeText(personalInfo.address),
+    },
+    emergencyContact: {
+      name: normalizeText(emergencyContact.name),
+      relation: normalizeText(emergencyContact.relation),
+      phone: normalizeText(emergencyContact.phone),
+    },
+    preferences: {
+      preferredRoomType: normalizeText(preferences.preferredRoomType),
+      blockPreference: normalizeText(preferences.blockPreference),
+      moveInDate: preferences.moveInDate || undefined,
+      specialRequests: normalizeText(preferences.specialRequests),
+    },
+  }
+}
+
+function validateApplicationPayload(payload) {
+  const missing = []
+  if (!payload.personalInfo.fullName) missing.push('personalInfo.fullName')
+  if (!payload.personalInfo.email) missing.push('personalInfo.email')
+  if (!payload.personalInfo.studentId) missing.push('personalInfo.studentId')
+  if (!payload.emergencyContact.name) missing.push('emergencyContact.name')
+  if (!payload.emergencyContact.phone) missing.push('emergencyContact.phone')
+
+  if (missing.length) {
+    throw new ApiError(400, `Missing required fields: ${missing.join(', ')}`)
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailPattern.test(payload.personalInfo.email)) {
+    throw new ApiError(400, 'personalInfo.email must be a valid email address')
+  }
+
+  if (payload.preferences.moveInDate) {
+    const moveInDate = new Date(payload.preferences.moveInDate)
+    if (Number.isNaN(moveInDate.getTime())) {
+      throw new ApiError(400, 'preferences.moveInDate must be a valid date')
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const normalizedMoveIn = new Date(moveInDate)
+    normalizedMoveIn.setHours(0, 0, 0, 0)
+
+    if (normalizedMoveIn < today) {
+      throw new ApiError(400, 'preferences.moveInDate cannot be in the past')
+    }
+
+    payload.preferences.moveInDate = moveInDate
+  }
+}
+
+function nextRoomStatus(room) {
+  if (room.status === 'Maintenance') return 'Maintenance'
+  if (room.occupiedSeats >= room.seatCount) return 'Full'
+  if (room.occupiedSeats > 0) return 'Limited'
+  return 'Open'
+}
+
+async function updateRoomOccupancy(roomId, delta) {
+  if (!roomId || delta === 0) return null
+
+  const room = await Room.findById(roomId)
+  if (!room) {
+    throw new ApiError(404, 'Assigned room not found')
+  }
+
+  room.occupiedSeats = Math.max(0, Math.min(room.seatCount, room.occupiedSeats + delta))
+  room.status = nextRoomStatus(room)
+  await room.save()
+  return room
+}
+
+async function validateAssignableRoom(roomId, dormId, shouldReserveSeat) {
+  if (!roomId) return null
+
+  const room = await Room.findById(roomId)
+  if (!room) {
+    throw new ApiError(404, 'Assigned room not found')
+  }
+
+  if (String(room.dorm) !== String(dormId)) {
+    throw new ApiError(400, 'Assigned room does not belong to the application dorm')
+  }
+
+  if (room.status === 'Maintenance') {
+    throw new ApiError(400, 'Cannot assign room in maintenance')
+  }
+
+  if (shouldReserveSeat && room.occupiedSeats >= room.seatCount) {
+    throw new ApiError(400, 'Cannot approve application: room is full')
+  }
+
+  return room
 }
 
 export const createApplication = asyncHandler(async (req, res) => {
@@ -20,14 +137,20 @@ export const createApplication = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'dorm is required')
   }
 
+  const normalizedPayload = normalizeApplicationPayload({
+    personalInfo,
+    preferences,
+    emergencyContact,
+  })
+  validateApplicationPayload(normalizedPayload)
+
   const dormExists = await Dorm.findById(dorm)
   if (!dormExists) {
     throw new ApiError(404, 'Dorm not found')
   }
 
-  let roomDoc = null
   if (room) {
-    roomDoc = await Room.findById(room)
+    const roomDoc = await Room.findById(room)
     if (!roomDoc) {
       throw new ApiError(404, 'Room not found')
     }
@@ -35,15 +158,23 @@ export const createApplication = asyncHandler(async (req, res) => {
     if (String(roomDoc.dorm) !== String(dorm)) {
       throw new ApiError(400, 'Selected room does not belong to the selected dorm')
     }
+
+    if (roomDoc.status === 'Maintenance') {
+      throw new ApiError(400, 'Selected room is under maintenance')
+    }
+
+    if (roomDoc.occupiedSeats >= roomDoc.seatCount || roomDoc.status === 'Full') {
+      throw new ApiError(400, 'Selected room is currently full')
+    }
   }
 
   const application = await Application.create({
     student: req.user.id,
     dorm,
     room,
-    personalInfo,
-    preferences,
-    emergencyContact,
+    personalInfo: normalizedPayload.personalInfo,
+    preferences: normalizedPayload.preferences,
+    emergencyContact: normalizedPayload.emergencyContact,
   })
 
   await notify(req.user.id, 'Application Submitted', 'Your room application was submitted successfully.', 'application')
@@ -93,23 +224,15 @@ export const getApplicationById = asyncHandler(async (req, res) => {
   res.json({ success: true, application })
 })
 
-function nextRoomStatus(room) {
-  if (room.status === 'Maintenance') return 'Maintenance'
-  if (room.occupiedSeats >= room.seatCount) return 'Full'
-  if (room.occupiedSeats > 0) return 'Limited'
-  return 'Open'
-}
-
 export const updateApplicationStatus = asyncHandler(async (req, res) => {
-  const { status, adminNote = '' } = req.body
+  const { status, adminNote = '', room } = req.body
 
   if (!status) {
     throw new ApiError(400, 'status is required')
   }
 
-  const allowed = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested']
-  if (!allowed.includes(status)) {
-    throw new ApiError(400, `Invalid status. Allowed: ${allowed.join(', ')}`)
+  if (!APPLICATION_STATUSES.includes(status)) {
+    throw new ApiError(400, `Invalid status. Allowed: ${APPLICATION_STATUSES.join(', ')}`)
   }
 
   const application = await Application.findById(req.params.id)
@@ -117,36 +240,51 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Application not found')
   }
 
-  if (status === 'Approved' && application.room) {
-    const room = await Room.findById(application.room)
+  const previousStatus = application.status
+  const wasApproved = previousStatus === 'Approved'
+  const isApproving = status === 'Approved'
+  const nextRoomId = room === undefined ? application.room : room || undefined
+  const roomChanged = String(application.room || '') !== String(nextRoomId || '')
+  const approvalTransition = wasApproved !== isApproving
 
-    if (!room) {
-      throw new ApiError(404, 'Assigned room not found')
-    }
-
-    if (room.status === 'Maintenance') {
-      throw new ApiError(400, 'Cannot approve application for room in maintenance')
-    }
-
-    if (room.occupiedSeats >= room.seatCount) {
-      throw new ApiError(400, 'Cannot approve application: room is full')
-    }
-
-    room.occupiedSeats += 1
-    room.status = nextRoomStatus(room)
-    await room.save()
+  if (isApproving && !nextRoomId) {
+    throw new ApiError(400, 'Cannot approve application without an assigned room')
   }
 
-  application.status = status
-  application.adminNote = adminNote
-  await application.save()
+  if (nextRoomId) {
+    await validateAssignableRoom(
+      nextRoomId,
+      application.dorm,
+      roomChanged || !application.room || (isApproving && !wasApproved),
+    )
+  }
 
-  await notify(
-    application.student,
-    'Application Updated',
-    `Your application status changed to ${status}.`,
-    'application',
-  )
+  if (wasApproved && (approvalTransition || roomChanged)) {
+    await updateRoomOccupancy(application.room, -1)
+  }
+
+  if (isApproving && (approvalTransition || roomChanged)) {
+    await updateRoomOccupancy(nextRoomId, 1)
+  }
+
+  application.room = nextRoomId
+  application.status = status
+  application.adminNote = normalizeText(adminNote)
+  await application.save()
+  await application.populate([
+    { path: 'student', select: 'name email studentId department' },
+    { path: 'dorm', select: 'name block' },
+    { path: 'room', select: 'roomNumber type priceMonthly seatCount occupiedSeats status' },
+  ])
+
+  if (previousStatus !== status) {
+    await notify(
+      application.student,
+      'Application Updated',
+      `Your application status changed from ${previousStatus} to ${status}.`,
+      'application',
+    )
+  }
 
   res.json({
     success: true,

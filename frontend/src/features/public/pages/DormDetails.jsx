@@ -116,7 +116,10 @@ function DormDetails() {
             <div className="rounded-2xl bg-surface-container-lowest p-8 shadow-sm ring-1 ring-outline-variant/15">
               <h3 className="mb-3 text-2xl font-bold">Ready to apply?</h3>
               <p className="mb-6 text-secondary">Secure your preferred room now. Our team will review your request within 24 hours.</p>
-              <Link to="/apply-now" className="block rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-4 text-center font-bold text-white transition hover:scale-[1.01]">
+              <Link
+                to={`/apply-now?dormName=${encodeURIComponent(dorm.name)}&dormId=${encodeURIComponent(dorm.id)}`}
+                className="block rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-4 text-center font-bold text-white transition hover:scale-[1.01]"
+              >
                 Apply Now
               </Link>
             </div>

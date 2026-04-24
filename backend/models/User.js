@@ -26,6 +26,11 @@ const userSchema = new mongoose.Schema(
       enum: ['student', 'admin'],
       default: 'student',
     },
+    gender: {
+      type: String,
+      enum: ['Male', 'Female', 'Prefer not to say'],
+      default: 'Prefer not to say',
+    },
     studentId: {
       type: String,
       unique: true,

@@ -56,7 +56,7 @@ function Sidebar({ activeKey = 'overview' }) {
 
       <div className="mt-auto space-y-1 px-6 py-8">
         <NavLink
-          to="/admin/settings"
+          to="/admin/profile"
           className={({ isActive }) =>
             [
               'flex items-center gap-3 rounded-lg px-4 py-3 text-[15px] font-medium transition-all',
@@ -66,8 +66,8 @@ function Sidebar({ activeKey = 'overview' }) {
             ].join(' ')
           }
         >
-          <Icon name="settings" />
-          <span>Settings</span>
+          <Icon name="person" />
+          <span>Profile</span>
         </NavLink>
 
         <button onClick={handleSignOut} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-[15px] font-medium text-slate-600 transition-all hover:bg-slate-200/50 hover:text-red-600">

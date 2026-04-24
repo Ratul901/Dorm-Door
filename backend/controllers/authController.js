@@ -3,12 +3,20 @@ import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 import { generateToken } from '../utils/generateToken.js'
 
+function normalizeGender(value) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'male') return 'Male'
+  if (normalized === 'female') return 'Female'
+  return 'Prefer not to say'
+}
+
 function sanitizeUser(user) {
   return {
     id: user._id,
     name: user.name,
     email: user.email,
     role: user.role,
+    gender: user.gender,
     studentId: user.studentId,
     phone: user.phone,
     department: user.department,
@@ -20,11 +28,12 @@ function sanitizeUser(user) {
 }
 
 export const signup = asyncHandler(async (req, res) => {
-  const { name, email, password, role = 'student', studentId, phone, department, university } = req.body
+  const { name, email, password, role = 'student', studentId, phone, department, university, gender } = req.body
   const normalizedName = String(name || '').trim()
   const normalizedEmail = String(email || '').trim().toLowerCase()
   const normalizedRole = role === 'admin' ? 'admin' : 'student'
   const normalizedStudentId = String(studentId || '').trim()
+  const normalizedGender = normalizeGender(gender)
 
   if (!normalizedName || !normalizedEmail || !password) {
     throw new ApiError(400, 'Name, email and password are required')
@@ -44,6 +53,7 @@ export const signup = asyncHandler(async (req, res) => {
     email: normalizedEmail,
     password,
     role: normalizedRole,
+    gender: normalizedGender,
     studentId: normalizedStudentId || undefined,
     phone,
     department,

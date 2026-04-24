@@ -36,7 +36,7 @@ function LoginPage() {
         if (loggedInUser.role === 'admin') {
           target = fromPath.startsWith('/admin') ? fromPath : roleHome
         } else {
-          target = fromPath.startsWith('/student') || fromPath === '/apply-now' ? fromPath : roleHome
+          target = fromPath.startsWith('/student') || fromPath.startsWith('/apply-now') ? fromPath : roleHome
         }
       }
 

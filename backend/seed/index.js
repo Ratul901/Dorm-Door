@@ -1,6 +1,5 @@
 import mongoose from 'mongoose'
 import { connectDatabase } from '../config/db.js'
-import { env } from '../config/env.js'
 import { Application } from '../models/Application.js'
 import { Document } from '../models/Document.js'
 import { Dorm } from '../models/Dorm.js'
@@ -10,29 +9,7 @@ import { Review } from '../models/Review.js'
 import { Room } from '../models/Room.js'
 import { SupportTicket } from '../models/SupportTicket.js'
 import { User } from '../models/User.js'
-
-const dormSeed = [
-  {
-    name: 'The Zenith Suite',
-    block: 'Block A',
-    address: 'Scholarly Heights Campus, Dhaka',
-    description: 'Premium student-focused housing with quiet study zones.',
-    rules: 'No loud noise after 10 PM. Keep shared spaces clean.',
-    facilities: ['High-speed Wi-Fi', '24/7 Security', 'Laundry Service', 'Study Lounge'],
-    totalFloors: 8,
-    totalCapacity: 220,
-  },
-  {
-    name: 'Ivy Sanctuary',
-    block: 'Block B',
-    address: 'North Wing Campus, Dhaka',
-    description: 'Balanced co-living for focused students.',
-    rules: 'Visitors allowed till 8 PM with prior registration.',
-    facilities: ['High-speed Wi-Fi', 'Gym', 'Dining Hall'],
-    totalFloors: 6,
-    totalCapacity: 180,
-  },
-]
+import { dormCatalog } from './dormCatalog.js'
 
 const roomSeed = [
   {
@@ -76,37 +53,43 @@ async function seed() {
     Review.deleteMany({}),
     Room.deleteMany({}),
     SupportTicket.deleteMany({}),
-    User.deleteMany({}),
   ])
 
-  const admin = await User.create({
-    name: 'Dorm Admin',
-    email: 'admin@dormdoor.com',
-    password: 'Admin123!',
-    role: 'admin',
-    phone: '+8801000000000',
-    university: 'DormDoor University Network',
-  })
+  let admin = await User.findOne({ email: 'admin@dormdoor.com' })
+  if (!admin) {
+    admin = await User.create({
+      name: 'Dorm Admin',
+      email: 'admin@dormdoor.com',
+      password: 'Admin123!',
+      role: 'admin',
+      phone: '+8801000000000',
+      university: 'DormDoor University Network',
+    })
+  }
 
-  const student = await User.create({
-    name: 'Alex Student',
-    email: 'student@dormdoor.com',
-    password: 'Student123!',
-    role: 'student',
-    studentId: 'DD-2026-1001',
-    phone: '+8801999999999',
-    department: 'Computer Science',
-    university: 'DormDoor University Network',
-    address: 'Dhaka, Bangladesh',
-    emergencyContact: {
-      name: 'Rafiq Hasan',
-      relation: 'Guardian',
-      phone: '+8801888888888',
-    },
-  })
+  let student = await User.findOne({ email: 'student@dormdoor.com' })
+  if (!student) {
+    student = await User.create({
+      name: 'Alex Student',
+      email: 'student@dormdoor.com',
+      password: 'Student123!',
+      role: 'student',
+      gender: 'Male',
+      studentId: 'DD-2026-1001',
+      phone: '+8801999999999',
+      department: 'Computer Science',
+      university: 'DormDoor University Network',
+      address: 'Dhaka, Bangladesh',
+      emergencyContact: {
+        name: 'Rafiq Hasan',
+        relation: 'Guardian',
+        phone: '+8801888888888',
+      },
+    })
+  }
 
   const createdDorms = await Dorm.insertMany(
-    dormSeed.map((dorm) => ({
+    dormCatalog.map((dorm) => ({
       ...dorm,
       managedBy: admin._id,
     })),

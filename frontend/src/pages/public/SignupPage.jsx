@@ -8,6 +8,7 @@ const initialState = {
   email: '',
   password: '',
   role: 'student',
+  gender: 'Prefer not to say',
   studentId: '',
   phone: '',
   department: '',
@@ -76,6 +77,20 @@ function SignupPage() {
               >
                 <option value="student">Student</option>
                 <option value="admin">Dorm Admin</option>
+              </select>
+            </label>
+
+            <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Gender
+              <select
+                name="gender"
+                value={form.gender}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] focus:ring-2 focus:ring-primary"
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Prefer not to say">Prefer not to say</option>
               </select>
             </label>
 

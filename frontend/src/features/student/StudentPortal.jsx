@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { useLanguage } from '../../context/LanguageContext'
+import { toSafeExternalUrl } from '../../utils/url'
 
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -23,6 +24,8 @@ const PAGE_TO_PATH = {
   support: '/student/support',
 }
 
+const REQUIRED_DOCUMENT_CATEGORIES = ['Student ID', 'Passport Photo', 'Admission Certificate']
+
 function pathToPage(pathname) {
   const entry = Object.entries(PAGE_TO_PATH).find(([, path]) => path === pathname)
   return entry ? entry[0] : 'dashboard'
@@ -39,8 +42,16 @@ function Icon({ name, filled = false, className = '' }) {
   )
 }
 
-function Avatar({ src, alt = 'avatar', className = '' }) {
-  return <img src={src} alt={alt} className={`rounded-full object-cover ${className}`} />
+function Avatar({ symbol = 'S', size = 'sm', className = '' }) {
+  const sizeClass = size === 'lg' ? 'text-3xl' : 'text-base'
+  return (
+    <div
+      aria-hidden="true"
+      className={`flex items-center justify-center rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${sizeClass} ${className}`}
+    >
+      {symbol}
+    </div>
+  )
 }
 
 function Sidebar({ activePage, setActivePage, onSignOut }) {
@@ -410,10 +421,7 @@ function Topbar({ placeholder = 'Search portal...' }) {
             aria-label="Go to profile"
             title="Go to profile"
           >
-            <Avatar
-              src={user?.profileImage || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80'}
-              className="h-11 w-11 ring-2 ring-white"
-            />
+            <Avatar symbol="S" size="sm" className="h-11 w-11 ring-2 ring-white" />
           </button>
         </div>
       </div>
@@ -454,6 +462,17 @@ function DashboardPage({ setActivePage }) {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const demoDocumentStorageKey = 'dormdoor_demo_student_documents'
+
+  const parseDemoDocuments = (raw) => {
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -465,9 +484,36 @@ function DashboardPage({ setActivePage }) {
       try {
         if (isDemoUser) {
           const demoProfile = mapUserToProfileForm(user || {})
+          const seedDocuments = [
+            {
+              _id: 'demo-doc-1',
+              category: 'Student ID',
+              fileName: 'student-id-card.pdf',
+              storageType: 'upload',
+              mimeType: 'application/pdf',
+              sizeBytes: 148500,
+              status: 'Verified',
+              updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+            {
+              _id: 'demo-doc-2',
+              category: 'Passport Photo',
+              fileName: 'passport-photo.jpg',
+              storageType: 'upload',
+              mimeType: 'image/jpeg',
+              sizeBytes: 325000,
+              status: 'Pending',
+              updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ]
+          const storedDocuments = parseDemoDocuments(localStorage.getItem(demoDocumentStorageKey))
+          const demoDocuments = storedDocuments || seedDocuments
+          if (!storedDocuments) {
+            localStorage.setItem(demoDocumentStorageKey, JSON.stringify(seedDocuments))
+          }
           const demoOverview = {
             applications: 2,
-            documents: 2,
+            documents: demoDocuments.length,
             maintenanceTickets: 1,
             supportTickets: 1,
             reviews: 1,
@@ -482,22 +528,6 @@ function DashboardPage({ setActivePage }) {
               },
             ],
           }
-          const demoDocuments = [
-            {
-              _id: 'demo-doc-1',
-              category: 'Student ID',
-              fileName: 'student-id-card.pdf',
-              status: 'Verified',
-              updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-            },
-            {
-              _id: 'demo-doc-2',
-              category: 'Passport Photo',
-              fileName: 'passport-photo.jpg',
-              status: 'Pending',
-              updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            },
-          ]
           const demoNotifications = [
             {
               _id: 'demo-notification-1',
@@ -563,17 +593,34 @@ function DashboardPage({ setActivePage }) {
       })
     : 'Submit your first application to begin'
 
-  const requiredDocuments = [
-    'Student ID',
-    'Passport Photo',
-    'Admission Certificate',
-  ].map((category) => {
+  const requiredDocuments = REQUIRED_DOCUMENT_CATEGORIES.map((category) => {
     const matchingDocument = documents.find((item) => item.category === category)
+    let state = 'missing'
+    let statusText = 'Not uploaded'
+
+    if (matchingDocument) {
+      if (matchingDocument.status === 'Verified') {
+        state = 'verified'
+        statusText = 'Verified'
+      } else if (matchingDocument.status === 'Needs Update') {
+        state = 'needsUpdate'
+        statusText = 'Re-upload'
+      } else if (matchingDocument.status === 'Rejected') {
+        state = 'rejected'
+        statusText = matchingDocument.status
+      } else {
+        state = 'pending'
+        statusText = 'Pending'
+      }
+    }
+
     return {
       key: category,
       title: category,
       item: matchingDocument || null,
-      done: matchingDocument ? matchingDocument.status === 'Verified' : false,
+      state,
+      statusText,
+      done: state === 'verified',
     }
   })
 
@@ -629,7 +676,7 @@ function DashboardPage({ setActivePage }) {
         <StatBox
           icon="description"
           label="Documents"
-          value={loading ? 'Loading...' : `${verifiedDocumentCount}/3 Verified`}
+          value={loading ? 'Loading...' : `${verifiedDocumentCount}/${REQUIRED_DOCUMENT_CATEGORIES.length} Verified`}
           chip={pendingDocumentCount > 0 ? `${pendingDocumentCount} Pending` : 'Complete'}
         />
         <StatBox
@@ -687,27 +734,67 @@ function DashboardPage({ setActivePage }) {
               </button>
             </div>
             <div className="space-y-4">
-              {requiredDocuments.map(({ key, title, item, done }) => (
-                <div key={key} className={`flex items-center gap-4 rounded-[22px] px-5 py-5 ${done ? 'bg-[#fbfbfb]' : 'bg-[#fff4f4]'}`}>
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${done ? 'bg-[#eef3ff] text-[#0c56d0]' : 'bg-[#ffe6e6] text-[#d33434]'}`}>
-                    <Icon name={done ? 'badge' : 'description'} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[14px] font-bold">{title}</p>
-                    <p className={`text-[13px] ${done ? 'text-[#7b818c]' : 'text-[#c73535]'}`}>
-                      {item ? `${item.status || 'Pending'} • ${item.fileName}` : 'Missing digital copy'}
-                    </p>
-                  </div>
-                  {done ? (
-                    <span className="rounded-full bg-[#eef5ff] px-4 py-2 text-[12px] font-bold text-[#0c56d0]">Verified</span>
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <span className="text-[13px] font-bold text-[#d33434]">PENDING</span>
-                      <button type="button" onClick={() => setActivePage('documents')} className="rounded-full bg-[#0c56d0] px-5 py-2 text-[13px] font-bold text-white">Upload</button>
+              {requiredDocuments.map(({ key, title, item, state, statusText }) => {
+                const rowClass =
+                  state === 'verified'
+                    ? 'bg-[#fbfbfb]'
+                    : state === 'pending'
+                      ? 'bg-[#edf3ff]'
+                      : state === 'needsUpdate'
+                        ? 'bg-[#fff8e8]'
+                      : state === 'missing'
+                        ? 'bg-[#f5f6f8]'
+                        : 'bg-[#fff4f4]'
+
+                const iconClass =
+                  state === 'verified' || state === 'pending'
+                    ? 'bg-[#eef3ff] text-[#0c56d0]'
+                    : state === 'needsUpdate'
+                      ? 'bg-[#fff2cf] text-[#b7791f]'
+                    : state === 'missing'
+                      ? 'bg-[#eceff3] text-[#6b7280]'
+                      : 'bg-[#ffe6e6] text-[#d33434]'
+
+                const helperClass =
+                  state === 'verified'
+                    ? 'text-[#7b818c]'
+                    : state === 'pending'
+                      ? 'text-[#0c56d0]'
+                      : state === 'needsUpdate'
+                        ? 'text-[#b7791f]'
+                      : state === 'missing'
+                        ? 'text-[#6b7280]'
+                        : 'text-[#c73535]'
+
+                return (
+                  <div key={key} className={`flex items-center gap-4 rounded-[22px] px-5 py-5 ${rowClass}`}>
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass}`}>
+                      <Icon name={state === 'verified' ? 'badge' : 'description'} />
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="flex-1">
+                      <p className="text-[14px] font-bold">{title}</p>
+                      <p className={`text-[13px] ${helperClass}`}>
+                        {item ? `${statusText} • ${item.fileName}` : 'Not uploaded'}
+                      </p>
+                    </div>
+
+                    {state === 'verified' ? (
+                      <span className="rounded-full bg-[#e9f6ed] px-4 py-2 text-[12px] font-bold text-[#24925e]">VERIFIED</span>
+                    ) : state === 'pending' ? (
+                      <span className="rounded-full bg-[#eef5ff] px-4 py-2 text-[12px] font-bold text-[#0c56d0]">PENDING</span>
+                    ) : state === 'needsUpdate' ? (
+                      <span className="rounded-full bg-[#fff2cf] px-4 py-2 text-[12px] font-bold text-[#b7791f]">RE-UPLOAD</span>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <span className={`text-[13px] font-bold ${state === 'missing' ? 'text-[#6b7280]' : 'text-[#d33434]'}`}>
+                          {state === 'missing' ? 'NOT UPLOADED' : statusText.toUpperCase()}
+                        </span>
+                        <button type="button" onClick={() => setActivePage('documents')} className="rounded-full bg-[#0c56d0] px-5 py-2 text-[13px] font-bold text-white">Upload</button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </section>
         </div>
@@ -719,17 +806,14 @@ function DashboardPage({ setActivePage }) {
               <button type="button" onClick={() => setActivePage('profile')} className="text-[12px] font-bold text-[#0c56d0]">EDIT</button>
             </div>
             <div className="text-center">
-              <Avatar
-                src={user?.profileImage || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80'}
-                className="mx-auto h-24 w-24 ring-4 ring-[#f0edec]"
-              />
-              <h4 className="mt-4 text-[17px] font-extrabold tracking-[-0.04em]">{profile.name || user?.name || 'New Student'}</h4>
-              <p className="mt-1 text-[13px] font-semibold text-[#0c56d0]">ID: {profile.studentId || 'Not assigned yet'}</p>
+              <Avatar symbol="S" size="lg" className="mx-auto h-24 w-24 ring-4 ring-[#f0edec]" />
+              <h4 data-user-content="true" className="mt-4 text-[17px] font-extrabold tracking-[-0.04em]">{profile.name || user?.name || 'New Student'}</h4>
+              <p data-user-content="true" className="mt-1 text-[13px] font-semibold text-[#0c56d0]">ID: {profile.studentId || 'Not assigned yet'}</p>
             </div>
             <div className="mt-6 space-y-3 border-t border-[#efebea] pt-5 text-[13px]">
-              <div className="flex justify-between"><span className="text-[#7b818c]">Department</span><span className="font-semibold">{profile.department || 'Add in profile'}</span></div>
-              <div className="flex justify-between"><span className="text-[#7b818c]">Phone</span><span className="font-semibold">{profile.phone || 'Add in profile'}</span></div>
-              <div className="flex justify-between"><span className="text-[#7b818c]">Email</span><span className="font-semibold">{profile.email || user?.email || 'No email'}</span></div>
+              <div className="flex justify-between"><span className="text-[#7b818c]">Department</span><span data-user-content="true" className="font-semibold">{profile.department || 'Add in profile'}</span></div>
+              <div className="flex justify-between"><span className="text-[#7b818c]">Phone</span><span data-user-content="true" className="font-semibold">{profile.phone || 'Add in profile'}</span></div>
+              <div className="flex justify-between"><span className="text-[#7b818c]">Email</span><span data-user-content="true" className="font-semibold">{profile.email || user?.email || 'No email'}</span></div>
             </div>
           </section>
 
@@ -989,10 +1073,10 @@ function RoomApplicationsPage() {
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#7b818c]">Applicant Info</p>
                 <div className="mt-3 space-y-2 text-[14px]">
-                  <p><span className="font-bold">Name:</span> {item.personalInfo?.fullName || 'Not provided'}</p>
-                  <p><span className="font-bold">Email:</span> {item.personalInfo?.email || 'Not provided'}</p>
-                  <p><span className="font-bold">Phone:</span> {item.personalInfo?.phone || 'Not provided'}</p>
-                  <p><span className="font-bold">Department:</span> {item.personalInfo?.department || 'Not provided'}</p>
+                  <p><span className="font-bold">Name:</span> <span data-user-content="true">{item.personalInfo?.fullName || 'Not provided'}</span></p>
+                  <p><span className="font-bold">Email:</span> <span data-user-content="true">{item.personalInfo?.email || 'Not provided'}</span></p>
+                  <p><span className="font-bold">Phone:</span> <span data-user-content="true">{item.personalInfo?.phone || 'Not provided'}</span></p>
+                  <p><span className="font-bold">Department:</span> <span data-user-content="true">{item.personalInfo?.department || 'Not provided'}</span></p>
                 </div>
               </div>
 
@@ -1001,7 +1085,12 @@ function RoomApplicationsPage() {
                 <div className="mt-3 space-y-2 text-[14px]">
                   <p><span className="font-bold">Block Preference:</span> {item.preferences?.blockPreference || 'Not set'}</p>
                   <p><span className="font-bold">Special Request:</span> {item.preferences?.specialRequests || 'None'}</p>
-                  <p><span className="font-bold">Emergency Contact:</span> {item.emergencyContact?.name || 'Not provided'} ({item.emergencyContact?.phone || 'N/A'})</p>
+                  <p>
+                    <span className="font-bold">Emergency Contact:</span>{' '}
+                    <span data-user-content="true">
+                      {item.emergencyContact?.name || 'Not provided'} ({item.emergencyContact?.phone || 'N/A'})
+                    </span>
+                  </p>
                   <p><span className="font-bold">Admin Note:</span> {item.adminNote || 'No admin note yet.'}</p>
                 </div>
               </div>
@@ -1389,11 +1478,11 @@ function DocumentsPage() {
   const { token } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_student_documents'
+  const fileInputRef = useRef(null)
 
   const initialForm = {
-    category: 'Student ID',
-    fileName: '',
-    fileUrl: '',
+    category: REQUIRED_DOCUMENT_CATEGORIES[0],
+    file: null,
   }
 
   const [documents, setDocuments] = useState([])
@@ -1431,7 +1520,9 @@ function DocumentsPage() {
             _id: 'demo-doc-1',
             category: 'Student ID',
             fileName: 'student-id-card.pdf',
-            fileUrl: 'https://example.com/student-id-card.pdf',
+            storageType: 'upload',
+            mimeType: 'application/pdf',
+            sizeBytes: 148500,
             status: 'Verified',
             updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
           },
@@ -1439,7 +1530,9 @@ function DocumentsPage() {
             _id: 'demo-doc-2',
             category: 'Passport Photo',
             fileName: 'passport-photo.jpg',
-            fileUrl: 'https://example.com/passport-photo.jpg',
+            storageType: 'upload',
+            mimeType: 'image/jpeg',
+            sizeBytes: 325000,
             status: 'Pending',
             updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
           },
@@ -1468,10 +1561,35 @@ function DocumentsPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleFileChange = (event) => {
+    const selected = event.currentTarget?.files?.[0] || event.target?.files?.[0] || null
+    setForm((prev) => ({
+      ...prev,
+      file: selected,
+    }))
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
-    if (!form.fileName.trim() || !form.fileUrl.trim()) {
-      setError('File name and file URL are required.')
+    const selectedFile = form.file || fileInputRef.current?.files?.[0] || null
+
+    if (!selectedFile) {
+      setError('Please choose a document file to upload.')
+      return
+    }
+
+    if ((selectedFile.size || 0) > 10 * 1024 * 1024) {
+      setError('File size exceeds 10MB limit.')
+      return
+    }
+
+    const existingActiveDocument = documents.find(
+      (item) => item.category === form.category && item.status !== 'Rejected',
+    )
+    if (existingActiveDocument) {
+      setError(
+        `${form.category} is already ${existingActiveDocument.status}. You can upload again after admin rejects it.`,
+      )
       return
     }
 
@@ -1484,8 +1602,10 @@ function DocumentsPage() {
         const created = {
           _id: `demo-doc-${Date.now()}`,
           category: form.category,
-          fileName: form.fileName.trim(),
-          fileUrl: form.fileUrl.trim(),
+          fileName: selectedFile.name,
+          storageType: 'upload',
+          mimeType: selectedFile.type || 'application/octet-stream',
+          sizeBytes: selectedFile.size || 0,
           status: 'Pending',
           updatedAt: new Date().toISOString(),
         }
@@ -1494,21 +1614,37 @@ function DocumentsPage() {
         setDocuments(next)
         localStorage.setItem(demoStorageKey, JSON.stringify(next))
       } else {
-        await api.post('/documents', {
-          category: form.category,
-          fileName: form.fileName.trim(),
-          fileUrl: form.fileUrl.trim(),
+        const payload = new FormData()
+        payload.append('category', form.category)
+        payload.append('file', selectedFile)
+        payload.append('fileName', selectedFile.name)
+
+        await api.post('/documents', payload, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
         })
         await fetchDocuments()
       }
 
       setForm(initialForm)
-      setMessage('Document metadata submitted successfully.')
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      setMessage('Document uploaded successfully for admin verification.')
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to submit document')
     } finally {
       setSaving(false)
     }
+  }
+
+  const formatFileSize = (value) => {
+    const bytes = Number(value) || 0
+    if (bytes <= 0) return 'N/A'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   const formatDate = (value) => {
@@ -1520,7 +1656,8 @@ function DocumentsPage() {
 
   const statusClass = (status) => {
     if (status === 'Verified') return 'bg-[#e9f6ed] text-[#24925e]'
-    if (status === 'Rejected' || status === 'Needs Update') return 'bg-[#ffe9ec] text-[#c73535]'
+    if (status === 'Needs Update') return 'bg-[#fff2cf] text-[#b7791f]'
+    if (status === 'Rejected') return 'bg-[#ffe9ec] text-[#c73535]'
     return 'bg-[#eef0ff] text-[#4a5fd2]'
   }
 
@@ -1529,7 +1666,7 @@ function DocumentsPage() {
       <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Registry and Verification</p>
       <h1 className="mt-3 text-[44px] font-extrabold leading-none tracking-[-0.06em]">Academic Credentials</h1>
       <p className="mt-4 max-w-[900px] text-[16px] leading-8 text-[#546067]">
-        Upload document metadata for verification and track review status.
+        Upload your document file for verification. File contents are validated on upload, and admins review status in real-time.
       </p>
 
       <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[1fr_1.4fr]">
@@ -1544,35 +1681,29 @@ function DocumentsPage() {
                 onChange={handleChange}
                 className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
               >
-                <option value="Student ID">Student ID</option>
-                <option value="Passport Photo">Passport Photo</option>
-                <option value="Admission Certificate">Admission Certificate</option>
-                <option value="Health Document">Health Document</option>
-                <option value="Other">Other</option>
+                {REQUIRED_DOCUMENT_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
               </select>
             </label>
 
             <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
-              File Name
+              Choose File
               <input
-                name="fileName"
-                value={form.fileName}
-                onChange={handleChange}
-                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
-                required
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.heic,.heif"
+                onChange={handleFileChange}
+                onInput={handleFileChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#0c56d0] file:px-3 file:py-2 file:text-xs file:font-bold file:text-white hover:file:brightness-105"
               />
             </label>
 
-            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
-              File URL
-              <input
-                name="fileUrl"
-                value={form.fileUrl}
-                onChange={handleChange}
-                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
-                required
-              />
-            </label>
+            <div className="rounded-xl bg-[#f7f4f3] px-4 py-3 text-sm text-[#546067]">
+              <p className="text-xs">Supported: PDF, DOC, DOCX, JPG, PNG, WEBP (max 10MB)</p>
+            </div>
 
             <button
               type="submit"
@@ -1597,8 +1728,11 @@ function DocumentsPage() {
             <p className="rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No documents uploaded yet.</p>
           ) : (
             <div className="space-y-4">
-              {documents.map((item) => (
-                <div key={item._id} className="rounded-[20px] bg-[#f7f4f3] p-5">
+              {documents.map((item) => {
+                const safeFileUrl = toSafeExternalUrl(item.fileUrl)
+                const isUrlDocument = item.storageType === 'url' && Boolean(safeFileUrl)
+                return (
+                  <div key={item._id} className="rounded-[20px] bg-[#f7f4f3] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-[16px] font-bold">{item.fileName}</p>
@@ -1610,14 +1744,26 @@ function DocumentsPage() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-3 text-[12px] font-semibold text-[#6b7280]">
-                    <a href={item.fileUrl} target="_blank" rel="noreferrer" className="text-[#0c56d0] underline">
-                      Open File
-                    </a>
+                    {isUrlDocument ? (
+                      <>
+                        <a href={safeFileUrl} target="_blank" rel="noreferrer" className="text-[#0c56d0] underline">
+                          Open File
+                        </a>
+                        <span className="h-1 w-1 rounded-full bg-[#9aa3ae]" />
+                      </>
+                    ) : (
+                      <span className="text-[#1f4cb7]">Uploaded from device</span>
+                    )}
+                    <span className="h-1 w-1 rounded-full bg-[#9aa3ae]" />
+                    <span>{item.mimeType || 'Document'}</span>
+                    <span className="h-1 w-1 rounded-full bg-[#9aa3ae]" />
+                    <span>{formatFileSize(item.sizeBytes)}</span>
                     <span className="h-1 w-1 rounded-full bg-[#9aa3ae]" />
                     <span>Updated: {formatDate(item.updatedAt)}</span>
                   </div>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           )}
         </section>
@@ -1939,6 +2085,7 @@ function mapUserToProfileForm(profileUser = {}) {
     name: profileUser.name || '',
     studentId: profileUser.studentId || '',
     email: profileUser.email || '',
+    gender: profileUser.gender || 'Prefer not to say',
     department: profileUser.department || '',
     university: profileUser.university || '',
     phone: profileUser.phone || '',
@@ -1957,8 +2104,14 @@ function mapUserToProfileForm(profileUser = {}) {
 }
 
 function normalizeProfilePayload(form) {
+  const normalizedGender = String(form.gender || '').trim().toLowerCase()
+  let gender = 'Prefer not to say'
+  if (normalizedGender === 'male') gender = 'Male'
+  if (normalizedGender === 'female') gender = 'Female'
+
   return {
     name: String(form.name || '').trim(),
+    gender,
     phone: String(form.phone || '').trim(),
     department: String(form.department || '').trim(),
     university: String(form.university || '').trim(),
@@ -1978,6 +2131,19 @@ function normalizeProfilePayload(form) {
   }
 }
 
+function toProfileUpdatePayload(form) {
+  return {
+    name: form.name,
+    gender: form.gender,
+    phone: form.phone,
+    department: form.department,
+    university: form.university,
+    address: form.address,
+    emergencyContact: form.emergencyContact,
+    settings: form.settings,
+  }
+}
+
 function cacheAuthUserProfile(form) {
   const raw = localStorage.getItem('dormdoor_user')
   if (!raw) return
@@ -1987,6 +2153,7 @@ function cacheAuthUserProfile(form) {
     const next = {
       ...parsed,
       name: form.name,
+      gender: form.gender,
       studentId: form.studentId || parsed.studentId,
       email: form.email || parsed.email,
       phone: form.phone,
@@ -2117,22 +2284,23 @@ function ProfilePage() {
   }
 
   const saveProfile = async (successText = 'Profile updated successfully.') => {
-    const payload = normalizeProfilePayload(form)
+    const normalizedForm = normalizeProfilePayload(form)
+    const payload = toProfileUpdatePayload(normalizedForm)
     setSaving(true)
     setMessage('')
     setError('')
 
     try {
       if (isDemoUser) {
-        localStorage.setItem(DEMO_PROFILE_STORAGE_KEY, JSON.stringify(payload))
-        cacheAuthUserProfile(payload)
-        setForm(payload)
+        localStorage.setItem(DEMO_PROFILE_STORAGE_KEY, JSON.stringify(normalizedForm))
+        cacheAuthUserProfile(normalizedForm)
+        setForm(normalizedForm)
         setMessage(successText)
         return
       }
 
       const { data } = await api.patch('/profile', payload)
-      const nextProfile = mapUserToProfileForm(data.user || payload)
+      const nextProfile = mapUserToProfileForm(data.user || normalizedForm)
       setForm(nextProfile)
       cacheAuthUserProfile(nextProfile)
       setMessage(data.message || successText)
@@ -2265,6 +2433,15 @@ function ProfilePage() {
               <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
                 Department
                 <input name="department" value={form.department} onChange={handleFieldChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Gender
+                <select name="gender" value={form.gender} onChange={handleFieldChange} className={textInputClass}>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
               </label>
 
               <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">

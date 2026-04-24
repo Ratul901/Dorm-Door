@@ -3,9 +3,17 @@ import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
 import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
-import { useAuth } from '../../../context/AuthContext'
 
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'
+function StudentAvatar({ className = '' }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`flex items-center justify-center rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
+    >
+      S
+    </div>
+  )
+}
 
 function formatRelativeTime(value) {
   if (!value) return 'Just now'
@@ -37,7 +45,6 @@ function formatReadableDate(value) {
 }
 
 function SupportPage() {
-  const { user } = useAuth()
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -102,7 +109,6 @@ function SupportPage() {
       time: formatRelativeTime(ticket.updatedAt),
       preview: messages[0]?.text || ticket.description || '',
       resident: ticket.student?.name || 'Unknown Resident',
-      residentAvatar: ticket.student?.profileImage || FALLBACK_AVATAR,
       residentInfo: `${ticket.student?.studentId || 'No student ID'} - ${ticket.student?.email || 'No email'}`,
       messages,
       ticketInfo: [
@@ -232,8 +238,8 @@ function SupportPage() {
                 <h3 className="mb-1 truncate text-sm font-bold text-on-surface">{ticket.subject}</h3>
                 {!!mapped.preview && <p className="line-clamp-2 text-xs leading-relaxed text-secondary">{mapped.preview}</p>}
                 <div className="mt-3 flex items-center gap-2">
-                  <img src={mapped.residentAvatar} alt={mapped.resident} className="h-6 w-6 rounded-full object-cover" />
-                  <span className="text-[11px] font-semibold text-on-surface">{mapped.resident}</span>
+                  <StudentAvatar className="h-6 w-6 text-[11px]" />
+                  <span data-user-content="true" className="text-[11px] font-semibold text-on-surface">{mapped.resident}</span>
                   {ticket.status !== 'Resolved' ? (
                     <span className="ml-auto flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">
                       <span className="h-1 w-1 rounded-full bg-amber-600" /> {ticket.priority || 'Medium'}
@@ -253,10 +259,10 @@ function SupportPage() {
           <>
             <div className="flex items-center justify-between bg-white/40 px-8 py-6">
               <div className="flex items-center gap-4">
-                <img src={activeViewTicket.residentAvatar} alt={activeViewTicket.resident} className="h-12 w-12 rounded-full object-cover" />
+                <StudentAvatar className="h-12 w-12 text-base" />
                 <div>
-                  <h2 className="text-xl font-bold text-on-surface">{activeViewTicket.resident}</h2>
-                  <p className="text-sm text-secondary">{activeViewTicket.residentInfo}</p>
+                  <h2 data-user-content="true" className="text-xl font-bold text-on-surface">{activeViewTicket.resident}</h2>
+                  <p data-user-content="true" className="text-sm text-secondary">{activeViewTicket.residentInfo}</p>
                 </div>
               </div>
               <div className="flex gap-3">

@@ -142,6 +142,7 @@ Current setup includes:
 - `MONGO_URI=...`
 - `JWT_SECRET=...`
 - `CLIENT_URL=http://localhost:5173`
+- `GOOGLE_TRANSLATE_API_KEY=` (optional, enables live translation API lookups)
 
 ### 3. Seed sample data
 
@@ -189,5 +190,5 @@ VITE_API_URL=http://localhost:5000/api
 
 ## Notes
 
-- Current document upload flow is metadata-based (file URL + filename). You can later connect real file storage (for example Cloudinary or S3).
+- Current document upload accepts real file input (multipart) but stores metadata only (name/type/size) for verification. You can later connect persistent storage (for example Cloudinary or S3) to keep downloadable files.
 - Application approval and room occupancy flows are linked so approved allocations can update occupied seats.
