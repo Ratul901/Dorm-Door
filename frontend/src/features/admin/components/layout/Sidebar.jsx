@@ -7,6 +7,7 @@ const navItems = [
   { key: 'dorms', label: 'Dorms', icon: 'domain', to: '/admin/dorms' },
   { key: 'applications', label: 'Applications', icon: 'assignment', to: '/admin/applications' },
   { key: 'documents', label: 'Documents', icon: 'description', to: '/admin/documents' },
+  { key: 'transactions', label: 'Transactions', icon: 'payments', to: '/admin/transactions' },
   { key: 'availability', label: 'Availability', icon: 'event_available', to: '/admin/availability' },
   { key: 'support', label: 'Support', icon: 'contact_support', to: '/admin/support' },
 ]

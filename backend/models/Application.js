@@ -39,8 +39,13 @@ const applicationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested'],
+      enum: ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested', 'Waitlisted'],
       default: 'Pending',
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['Not Submitted', 'Pending', 'Approved', 'Paid', 'Rejected'],
+      default: 'Not Submitted',
     },
     adminNote: {
       type: String,

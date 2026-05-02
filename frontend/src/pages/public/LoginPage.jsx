@@ -3,8 +3,14 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import PageShell from '../../features/public/components/PageShell'
 import { useAuth } from '../../context/AuthContext'
 
+function dashboardPathForRole(role) {
+  if (role === 'superAdmin') return '/super-admin/dashboard'
+  if (role === 'admin') return '/admin'
+  return '/student'
+}
+
 function LoginPage() {
-  const { login, user, isAuthenticated } = useAuth()
+  const { login, logout, user, isAuthenticated } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -13,7 +19,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   if (isAuthenticated && user) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/student'} replace />
+    return <Navigate to={dashboardPathForRole(user.role)} replace />
   }
 
   const handleChange = (event) => {
@@ -28,12 +34,20 @@ function LoginPage() {
 
     try {
       const loggedInUser = await login(form)
-      const roleHome = loggedInUser.role === 'admin' ? '/admin' : '/student'
+      if (loggedInUser.role === 'superAdmin') {
+        logout()
+        setError('Use the separate super admin login page.')
+        return
+      }
+
+      const roleHome = dashboardPathForRole(loggedInUser.role)
       const fromPath = typeof location.state?.from?.pathname === 'string' ? location.state.from.pathname : ''
 
       let target = roleHome
       if (fromPath.startsWith('/')) {
-        if (loggedInUser.role === 'admin') {
+        if (loggedInUser.role === 'superAdmin') {
+          target = fromPath.startsWith('/super-admin') ? fromPath : roleHome
+        } else if (loggedInUser.role === 'admin') {
           target = fromPath.startsWith('/admin') ? fromPath : roleHome
         } else {
           target = fromPath.startsWith('/student') || fromPath.startsWith('/apply-now') ? fromPath : roleHome

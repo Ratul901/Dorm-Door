@@ -10,6 +10,8 @@ import documentRoutes from './routes/documentRoutes.js'
 import maintenanceRoutes from './routes/maintenanceRoutes.js'
 import supportRoutes from './routes/supportRoutes.js'
 import reviewRoutes from './routes/reviewRoutes.js'
+import transactionRoutes from './routes/transactionRoutes.js'
+import superAdminRoutes from './routes/superAdminRoutes.js'
 import dashboardRoutes from './routes/dashboardRoutes.js'
 import profileRoutes from './routes/profileRoutes.js'
 import notificationRoutes from './routes/notificationRoutes.js'
@@ -65,6 +67,8 @@ app.use('/api/documents', documentRoutes)
 app.use('/api/maintenance', maintenanceRoutes)
 app.use('/api/support', supportRoutes)
 app.use('/api/reviews', reviewRoutes)
+app.use('/api/transactions', transactionRoutes)
+app.use('/api/super-admin', superAdminRoutes)
 app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/notifications', notificationRoutes)

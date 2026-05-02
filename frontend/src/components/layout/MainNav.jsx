@@ -6,7 +6,7 @@ function MainNav() {
   const { user, isAuthenticated, logout } = useAuth()
   const { language, setLanguage } = useLanguage()
 
-  const dashboardPath = user?.role === 'admin' ? '/admin' : '/student'
+  const dashboardPath = user?.role === 'superAdmin' ? '/super-admin/dashboard' : user?.role === 'admin' ? '/admin' : '/student'
 
   return (
     <header className="main-nav">

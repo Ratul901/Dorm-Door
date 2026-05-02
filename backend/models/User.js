@@ -23,8 +23,22 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['student', 'admin'],
+      enum: ['student', 'admin', 'superAdmin'],
       default: 'student',
+    },
+    accountStatus: {
+      type: String,
+      enum: ['active', 'blocked'],
+      default: 'active',
+    },
+    assignedDorm: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Dorm',
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['Not Submitted', 'Pending', 'Approved', 'Paid', 'Rejected'],
+      default: 'Not Submitted',
     },
     gender: {
       type: String,

@@ -25,6 +25,10 @@ const dormSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    priceRange: {
+      type: String,
+      default: '',
+    },
     facilities: {
       type: [String],
       default: [],

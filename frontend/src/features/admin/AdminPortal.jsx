@@ -3,6 +3,7 @@ import OverviewPage from './pages/OverviewPage'
 import DormsPage from './pages/DormsPage'
 import ApplicationsPage from './pages/ApplicationsPage'
 import DocumentsPage from './pages/DocumentsPage'
+import TransactionsPage from './pages/TransactionsPage'
 import AvailabilityPage from './pages/AvailabilityPage'
 import SupportPage from './pages/SupportPage'
 import SettingsPage from './pages/SettingsPage'
@@ -18,6 +19,7 @@ function AdminPortal() {
       <Route path="rooms/add" element={<AddRoomPage />} />
       <Route path="applications" element={<ApplicationsPage />} />
       <Route path="documents" element={<DocumentsPage />} />
+      <Route path="transactions" element={<TransactionsPage />} />
       <Route path="availability" element={<AvailabilityPage />} />
       <Route path="support" element={<SupportPage />} />
       <Route path="profile" element={<SettingsPage />} />
