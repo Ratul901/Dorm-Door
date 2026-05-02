@@ -17,7 +17,7 @@ const roomSeed = [
     floor: '4th Floor',
     type: 'Single Room',
     seatCount: 1,
-    occupiedSeats: 0,
+    occupiedSeats: 1,
     priceMonthly: 8500,
     amenities: ['Wi-Fi', 'AC', 'Attached Bath'],
   },
@@ -126,7 +126,7 @@ async function seed() {
       specialRequests: 'Near study lounge if possible',
     },
     emergencyContact: student.emergencyContact,
-    status: 'Pending',
+    status: 'Approved',
   })
 
   await Document.insertMany([

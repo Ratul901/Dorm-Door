@@ -7,6 +7,7 @@ const adminLinks = [
   ['Add Dorm', '/admin/dorms/add'],
   ['Add Room', '/admin/rooms/add'],
   ['Applications', '/admin/applications'],
+  ['Swap Requests', '/admin/swap-requests'],
   ['Documents', '/admin/documents'],
   ['Availability', '/admin/availability'],
   ['Support', '/admin/support'],

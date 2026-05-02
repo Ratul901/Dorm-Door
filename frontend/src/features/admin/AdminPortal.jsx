@@ -8,6 +8,7 @@ import SupportPage from './pages/SupportPage'
 import SettingsPage from './pages/SettingsPage'
 import AddRoomPage from './pages/AddRoomPage'
 import AddDormPage from './pages/AddDormPage'
+import SwapRequestsPage from './pages/SwapRequestsPage'
 
 function AdminPortal() {
   return (
@@ -17,6 +18,7 @@ function AdminPortal() {
       <Route path="dorms/add" element={<AddDormPage />} />
       <Route path="rooms/add" element={<AddRoomPage />} />
       <Route path="applications" element={<ApplicationsPage />} />
+      <Route path="swap-requests" element={<SwapRequestsPage />} />
       <Route path="documents" element={<DocumentsPage />} />
       <Route path="availability" element={<AvailabilityPage />} />
       <Route path="support" element={<SupportPage />} />
@@ -28,6 +30,5 @@ function AdminPortal() {
 }
 
 export default AdminPortal
-
 
 

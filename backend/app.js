@@ -14,6 +14,7 @@ import dashboardRoutes from './routes/dashboardRoutes.js'
 import profileRoutes from './routes/profileRoutes.js'
 import notificationRoutes from './routes/notificationRoutes.js'
 import translateRoutes from './routes/translateRoutes.js'
+import swapRequestRoutes from './routes/swapRequestRoutes.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 
 const app = express()
@@ -69,6 +70,7 @@ app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/translate', translateRoutes)
+app.use('/api/swap-requests', swapRequestRoutes)
 
 app.use(notFound)
 app.use(errorHandler)
