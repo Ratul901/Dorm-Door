@@ -6,6 +6,7 @@ const navItems = [
   { key: 'overview', label: 'Overview', icon: 'dashboard', to: '/admin' },
   { key: 'dorms', label: 'Dorms', icon: 'domain', to: '/admin/dorms' },
   { key: 'applications', label: 'Applications', icon: 'assignment', to: '/admin/applications' },
+  { key: 'swapRequests', label: 'Swap Requests', icon: 'sync_alt', to: '/admin/swap-requests' },
   { key: 'documents', label: 'Documents', icon: 'description', to: '/admin/documents' },
   { key: 'transactions', label: 'Transactions', icon: 'payments', to: '/admin/transactions' },
   { key: 'availability', label: 'Availability', icon: 'event_available', to: '/admin/availability' },
@@ -81,7 +82,6 @@ function Sidebar({ activeKey = 'overview' }) {
 }
 
 export default Sidebar
-
 
 
 

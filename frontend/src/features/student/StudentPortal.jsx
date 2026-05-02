@@ -1,6 +1,12 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
+import {
+  cancelSwapRequest,
+  createSwapRequest,
+  getSwapAssignment,
+  listSwapRequests,
+} from '../../api/swapRequests'
 import { useAuth } from '../../context/AuthContext'
 import { useLanguage } from '../../context/LanguageContext'
 import { toSafeExternalUrl } from '../../utils/url'
@@ -8,7 +14,7 @@ import { toSafeExternalUrl } from '../../utils/url'
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { key: 'applications', label: 'Room Applications', icon: 'domain' },
-  { key: 'payments', label: 'Payments', icon: 'payments' },
+  { key: 'swap', label: 'Dorm Swap', icon: 'sync_alt' },
   { key: 'maintenance', label: 'Maintenance', icon: 'build' },
   { key: 'documents', label: 'Documents', icon: 'description' },
   { key: 'reviews', label: 'Reviews', icon: 'rate_review' },
@@ -18,7 +24,7 @@ const MENU = [
 const PAGE_TO_PATH = {
   dashboard: '/student',
   applications: '/student/applications',
-  payments: '/student/payments',
+  swap: '/student/swap',
   maintenance: '/student/maintenance',
   documents: '/student/documents',
   reviews: '/student/reviews',
@@ -1762,6 +1768,436 @@ function PaymentsPage() {
           </div>
         </section>
       </div>
+    </PageFrame>
+  )
+}
+
+function DormSwapPage() {
+  const { token } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const demoStorageKey = 'dormdoor_demo_student_swap_requests'
+
+  const [assignment, setAssignment] = useState(null)
+  const [dorms, setDorms] = useState([])
+  const [rooms, setRooms] = useState([])
+  const [requests, setRequests] = useState([])
+  const [requestMode, setRequestMode] = useState('choose')
+  const [requestedDorm, setRequestedDorm] = useState('')
+  const [customDormName, setCustomDormName] = useState('')
+  const [requestedRoom, setRequestedRoom] = useState('')
+  const [reason, setReason] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const parseStoredRequests = (raw) => {
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  const demoAssignment = {
+    _id: 'demo-approved-app',
+    dorm: { name: 'Scholar Haven', block: 'Block B' },
+    room: {
+      _id: 'demo-room-current',
+      roomNumber: '205-C',
+      type: 'Single Room',
+      priceMonthly: 12000,
+      seatCount: 1,
+      occupiedSeats: 1,
+      status: 'Full',
+      dorm: { _id: 'demo-dorm', name: 'Scholar Haven', block: 'Block B' },
+    },
+  }
+
+  const demoRooms = [
+    {
+      _id: 'demo-room-301',
+      roomNumber: '301-A',
+      type: 'Double Room',
+      priceMonthly: 10500,
+      seatCount: 2,
+      occupiedSeats: 1,
+      status: 'Limited',
+      dorm: { _id: 'demo-dorm', name: 'Scholar Haven', block: 'Block B' },
+    },
+    {
+      _id: 'demo-room-404',
+      roomNumber: '404-B',
+      type: 'Premium Studio',
+      priceMonthly: 18000,
+      seatCount: 1,
+      occupiedSeats: 0,
+      status: 'Open',
+      dorm: { _id: 'demo-dorm', name: 'Scholar Haven', block: 'Block B' },
+    },
+  ]
+
+  const demoDorms = [
+    { _id: 'demo-dorm', name: 'Scholar Haven', block: 'Block B' },
+    { _id: 'demo-dorm-2', name: 'Aurora Residence', block: 'Block C' },
+    { _id: 'demo-dorm-3', name: 'The Zenith Suite', block: 'Block A' },
+  ]
+
+  const loadSwapData = async () => {
+    setLoading(true)
+    setError('')
+
+    if (isDemoUser) {
+      const stored = parseStoredRequests(localStorage.getItem(demoStorageKey)) || []
+      setAssignment(demoAssignment)
+      setDorms(demoDorms)
+      setRooms(demoRooms)
+      setRequests(stored)
+      setRequestedDorm(demoDorms[0]?._id || '')
+      setRequestedRoom(demoRooms[0]?._id || '')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const [{ data: assignmentData }, { data: requestData }] = await Promise.all([
+        getSwapAssignment(),
+        listSwapRequests(),
+      ])
+
+      const nextRooms = assignmentData.rooms || []
+      const nextDorms = assignmentData.dorms || []
+      setAssignment(assignmentData.assignment || null)
+      setDorms(nextDorms)
+      setRooms(nextRooms)
+      setRequests(requestData.swapRequests || [])
+      setRequestedDorm(nextDorms[0]?._id || '')
+      setRequestedRoom('')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load dorm swap data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadSwapData()
+  }, [isDemoUser, token])
+
+  const pendingRequest = useMemo(
+    () => requests.find((item) => item.status === 'Pending') || null,
+    [requests],
+  )
+
+  const availableRooms = useMemo(
+    () => rooms.filter((room) => room.status !== 'Maintenance' && Number(room.occupiedSeats || 0) < Number(room.seatCount || 0)),
+    [rooms],
+  )
+
+  const filteredRooms = useMemo(() => {
+    if (!requestedDorm) return availableRooms
+    return availableRooms.filter((room) => String(room.dorm?._id || room.dorm) === String(requestedDorm))
+  }, [availableRooms, requestedDorm])
+
+  const statusClasses = (status) => {
+    if (status === 'Pending') return 'bg-[#fff2de] text-[#b7791f]'
+    if (status === 'Approved') return 'bg-[#ecf7ef] text-[#23945b]'
+    if (status === 'Cancelled') return 'bg-[#e8f0f7] text-[#4e6875]'
+    return 'bg-[#feecef] text-[#d33434]'
+  }
+
+  const formatDateTime = (value) => {
+    if (!value) return 'Not available'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'Not available'
+    return parsed.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const roomLabel = (room) => {
+    if (!room) return 'Room not available'
+    const availableSeats = Math.max(Number(room.seatCount || 0) - Number(room.occupiedSeats || 0), 0)
+    return `${room.roomNumber || 'Room'} - ${room.type || 'Room'} (${availableSeats} seat${availableSeats === 1 ? '' : 's'} available)`
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setMessage('')
+    setError('')
+
+    if (requestMode === 'choose' && !requestedDorm && !requestedRoom) {
+      setError('Choose the dorm you want to swap with.')
+      return
+    }
+
+    if (requestMode === 'type' && !customDormName.trim()) {
+      setError('Type the dorm name you want to swap with.')
+      return
+    }
+
+    if (!reason.trim()) {
+      setError('Please add a short reason for the room change.')
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      if (isDemoUser) {
+        const targetRoom = demoRooms.find((room) => room._id === requestedRoom)
+        const targetDorm = demoDorms.find((dorm) => dorm._id === requestedDorm)
+        const createdAt = new Date().toISOString()
+        const nextRequest = {
+          _id: `demo-swap-${Date.now()}`,
+          currentRoom: demoAssignment.room,
+          requestedDorm: targetDorm || null,
+          requestedDormName: requestMode === 'type' ? customDormName.trim() : targetDorm?.name || '',
+          requestedRoom: targetRoom,
+          reason: reason.trim(),
+          status: 'Pending',
+          adminNote: '',
+          createdAt,
+          updatedAt: createdAt,
+        }
+        const next = [nextRequest, ...requests]
+        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+        setRequests(next)
+        setReason('')
+        setCustomDormName('')
+        setMessage('Demo swap request submitted.')
+        return
+      }
+
+      const { data } = await createSwapRequest({
+        requestedDorm: requestMode === 'choose' ? requestedDorm : '',
+        requestedDormName: requestMode === 'type' ? customDormName : '',
+        requestedRoom: requestMode === 'choose' ? requestedRoom : '',
+        reason,
+      })
+
+      setRequests((prev) => [data.swapRequest, ...prev])
+      setReason('')
+      setCustomDormName('')
+      setMessage('Swap request submitted successfully.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to submit swap request')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleCancel = async (id) => {
+    setMessage('')
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const next = requests.map((item) => (
+          item._id === id ? { ...item, status: 'Cancelled', updatedAt: new Date().toISOString() } : item
+        ))
+        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+        setRequests(next)
+        setMessage('Demo swap request cancelled.')
+        return
+      }
+
+      const { data } = await cancelSwapRequest(id)
+      setRequests((prev) => prev.map((item) => (item._id === id ? data.swapRequest : item)))
+      setMessage('Swap request cancelled.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to cancel swap request')
+    }
+  }
+
+  return (
+    <PageFrame placeholder="Search swap requests...">
+      <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Resident Services</p>
+          <h1 className="mt-3 text-[48px] font-extrabold leading-none tracking-[-0.06em]">Dorm Swap</h1>
+          <p className="mt-4 max-w-[780px] text-[16px] leading-8 text-[#546067]">
+            Request a room change after approval. Admin will verify seat availability before assigning the new room.
+          </p>
+        </div>
+      </div>
+
+      {message ? <p className="mt-6 rounded-xl bg-[#ecf7ef] px-4 py-3 text-sm font-semibold text-[#23945b]">{message}</p> : null}
+      {error ? <p className="mt-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+
+      {loading ? (
+        <p className="mt-10 text-[16px] font-semibold text-[#546067]">Loading swap details...</p>
+      ) : (
+        <div className="mt-10 grid grid-cols-1 gap-8 xl:grid-cols-[0.95fr_1.05fr]">
+          <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+            <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">Create Swap Request</h2>
+
+            {!assignment ? (
+              <p className="mt-5 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">
+                You need an approved application with an assigned room before requesting a dorm swap.
+              </p>
+            ) : (
+              <>
+                <div className="mt-5 rounded-[20px] bg-[#f7f4f3] p-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#7b818c]">Current Assignment</p>
+                  <p className="mt-3 text-[18px] font-extrabold">{assignment.dorm?.name || assignment.room?.dorm?.name || 'Assigned Dorm'}</p>
+                  <p className="mt-2 text-[14px] text-[#546067]">
+                    Room {assignment.room?.roomNumber || 'N/A'} - {assignment.room?.type || 'Room type not set'}
+                  </p>
+                </div>
+
+                <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+                  <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                    Swap Request Type
+                    <select
+                      value={requestMode}
+                      onChange={(event) => {
+                        setRequestMode(event.target.value)
+                        setRequestedRoom('')
+                      }}
+                      className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                      disabled={Boolean(pendingRequest)}
+                    >
+                      <option value="choose">Choose an existing dorm</option>
+                      <option value="type">Type preferred dorm name</option>
+                    </select>
+                  </label>
+
+                  {requestMode === 'choose' ? (
+                    <>
+                      <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                        Dorm You Want To Swap With
+                        <select
+                          value={requestedDorm}
+                          onChange={(event) => {
+                            setRequestedDorm(event.target.value)
+                            setRequestedRoom('')
+                          }}
+                          className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                          disabled={Boolean(pendingRequest) || dorms.length === 0}
+                          required
+                        >
+                          {dorms.length === 0 ? <option value="">No dorms available</option> : null}
+                          {dorms.map((dorm) => (
+                            <option key={dorm._id} value={dorm._id}>
+                              {dorm.name}{dorm.block ? ` - ${dorm.block}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                        Preferred Room (Optional)
+                        <select
+                          value={requestedRoom}
+                          onChange={(event) => setRequestedRoom(event.target.value)}
+                          className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                          disabled={Boolean(pendingRequest)}
+                        >
+                          <option value="">Let admin assign an available room</option>
+                          {filteredRooms.map((room) => (
+                            <option key={room._id} value={room._id}>
+                              {roomLabel(room)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  ) : (
+                    <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                      Preferred Dorm Name
+                      <input
+                        value={customDormName}
+                        onChange={(event) => setCustomDormName(event.target.value)}
+                        className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                        placeholder="Example: Aurora Residence or Block B dorm"
+                        disabled={Boolean(pendingRequest)}
+                        required
+                      />
+                    </label>
+                  )}
+
+                  <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                    Reason
+                    <textarea
+                      rows="5"
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                      className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                      placeholder="Briefly explain why you want to change rooms."
+                      disabled={Boolean(pendingRequest)}
+                      required
+                    />
+                  </label>
+
+                  {pendingRequest ? (
+                    <p className="rounded-xl bg-[#fff8ec] px-4 py-3 text-sm font-semibold text-[#9a6917]">
+                      You already have a pending swap request. Cancel it before creating a new one.
+                    </p>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    disabled={submitting || Boolean(pendingRequest)}
+                    className="rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
+                  >
+                    {submitting ? 'Submitting...' : 'Submit Swap Request'}
+                  </button>
+                </form>
+              </>
+            )}
+          </section>
+
+          <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+            <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">My Swap Requests</h2>
+
+            {requests.length === 0 ? (
+              <p className="mt-5 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No swap requests submitted yet.</p>
+            ) : (
+              <div className="mt-5 space-y-4">
+                {requests.map((item) => (
+                  <article key={item._id} className="rounded-[20px] bg-[#f7f4f3] p-5 ring-1 ring-[#efebea]">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[15px] font-extrabold">
+                          {item.currentRoom?.roomNumber || 'Current room'} to {item.requestedRoom?.roomNumber || 'Requested room'}
+                        </p>
+                        <p className="mt-2 text-[13px] text-[#546067]">
+                          Preferred dorm: {item.requestedDorm?.name || item.requestedDormName || item.requestedRoom?.dorm?.name || 'Not specified'}
+                        </p>
+                        <p className="mt-1 text-[13px] text-[#546067]">{item.requestedRoom?.type || 'Admin will assign a room if approved'}</p>
+                      </div>
+                      <span className={`rounded-full px-4 py-2 text-[12px] font-bold ${statusClasses(item.status)}`}>
+                        {item.status}
+                      </span>
+                    </div>
+                    <p className="mt-4 text-[14px] leading-7 text-[#3f4850]">{item.reason}</p>
+                    {item.adminNote ? <p className="mt-3 text-[13px] font-semibold text-[#7b4a28]">Admin note: {item.adminNote}</p> : null}
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e8e2df] pt-4 text-[12px] text-[#6b7280]">
+                      <span>Submitted: {formatDateTime(item.createdAt)}</span>
+                      {item.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleCancel(item._id)}
+                          className="rounded-full bg-[#feecef] px-4 py-2 text-[12px] font-bold text-[#d33434]"
+                        >
+                          Cancel Request
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </PageFrame>
   )
 }
@@ -3597,8 +4033,8 @@ export default function StudentPortal() {
     switch (activePage) {
       case 'applications':
         return <RoomApplicationsPage />
-      case 'payments':
-        return <PaymentsPage />
+      case 'swap':
+        return <DormSwapPage />
       case 'maintenance':
         return <MaintenancePage />
       case 'documents':
@@ -3621,10 +4057,5 @@ export default function StudentPortal() {
     </div>
   )
 }
-
-
-
-
-
 
 

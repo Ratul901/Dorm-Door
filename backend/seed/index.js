@@ -18,7 +18,7 @@ const roomSeed = [
     floor: '4th Floor',
     type: 'Single Room',
     seatCount: 1,
-    occupiedSeats: 0,
+    occupiedSeats: 1,
     priceMonthly: 8500,
     amenities: ['Wi-Fi', 'AC', 'Attached Bath'],
   },
@@ -140,20 +140,7 @@ async function seed() {
       specialRequests: 'Near study lounge if possible',
     },
     emergencyContact: student.emergencyContact,
-    status: 'Pending',
-    paymentStatus: 'Pending',
-  })
-
-  await Transaction.create({
-    student: student._id,
-    application: application._id,
-    dorm: dormA._id,
-    room: roomOne._id,
-    amount: roomOne.priceMonthly,
-    paymentMethod: 'bKash',
-    transactionId: 'DEMO-TXN-1001',
-    receiptUrl: 'https://example.com/files/payment-receipt-demo.jpg',
-    status: 'Pending',
+    status: 'Approved',
   })
 
   await Document.insertMany([
