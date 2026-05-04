@@ -8,6 +8,8 @@ import LoginPage from './pages/public/LoginPage'
 import SignupPage from './pages/public/SignupPage'
 import StudentPortal from './features/student/StudentPortal'
 import AdminPortal from './features/admin/AdminPortal'
+import SuperAdminLoginPage from './pages/superAdmin/SuperAdminLoginPage'
+import SuperAdminPortal from './pages/superAdmin/SuperAdminPortal'
 
 function NotFound() {
   return (
@@ -29,6 +31,7 @@ function App() {
       <Route path="/apply-now" element={<ApplyNowPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/super-admin/login" element={<SuperAdminLoginPage />} />
 
       <Route
         path="/student/*"
@@ -44,6 +47,15 @@ function App() {
         element={
           <ProtectedRoute roles={['admin']}>
             <AdminPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/super-admin/*"
+        element={
+          <ProtectedRoute roles={['superAdmin']}>
+            <SuperAdminPortal />
           </ProtectedRoute>
         }
       />

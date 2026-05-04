@@ -8,6 +8,7 @@ import { Notification } from '../models/Notification.js'
 import { Review } from '../models/Review.js'
 import { Room } from '../models/Room.js'
 import { SupportTicket } from '../models/SupportTicket.js'
+import { Transaction } from '../models/Transaction.js'
 import { User } from '../models/User.js'
 import { dormCatalog } from './dormCatalog.js'
 
@@ -53,7 +54,20 @@ async function seed() {
     Review.deleteMany({}),
     Room.deleteMany({}),
     SupportTicket.deleteMany({}),
+    Transaction.deleteMany({}),
   ])
+
+  let superAdmin = await User.findOne({ email: 'superadmin@dormdoor.com' })
+  if (!superAdmin) {
+    superAdmin = await User.create({
+      name: 'Super Admin',
+      email: 'superadmin@dormdoor.com',
+      password: 'Super123!',
+      role: 'superAdmin',
+      phone: '+8801111111111',
+      university: 'DormDoor University Network',
+    })
+  }
 
   let admin = await User.findOne({ email: 'admin@dormdoor.com' })
   if (!admin) {
@@ -126,6 +140,19 @@ async function seed() {
       specialRequests: 'Near study lounge if possible',
     },
     emergencyContact: student.emergencyContact,
+    status: 'Pending',
+    paymentStatus: 'Pending',
+  })
+
+  await Transaction.create({
+    student: student._id,
+    application: application._id,
+    dorm: dormA._id,
+    room: roomOne._id,
+    amount: roomOne.priceMonthly,
+    paymentMethod: 'bKash',
+    transactionId: 'DEMO-TXN-1001',
+    receiptUrl: 'https://example.com/files/payment-receipt-demo.jpg',
     status: 'Pending',
   })
 
@@ -206,10 +233,19 @@ async function seed() {
       type: 'system',
       read: false,
     },
+    {
+      user: superAdmin._id,
+      title: 'Payment Review Needed',
+      message: 'A sample student payment is pending super admin approval.',
+      type: 'payment',
+      read: false,
+    },
   ])
 
   // eslint-disable-next-line no-console
   console.log('Seed complete')
+  // eslint-disable-next-line no-console
+  console.log('Super Admin Login: superadmin@dormdoor.com / Super123!')
   // eslint-disable-next-line no-console
   console.log('Admin Login: admin@dormdoor.com / Admin123!')
   // eslint-disable-next-line no-console

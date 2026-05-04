@@ -5,10 +5,23 @@ export function notFound(req, res, next) {
 }
 
 export function errorHandler(error, req, res, next) {
-  const statusCode = error.statusCode || 500
+  let statusCode = error.statusCode || 500
+  let message = error.message || 'Internal server error'
+
+  if (error?.code === 11000) {
+    statusCode = 409
+    const duplicateField = Object.keys(error.keyValue || {})[0]
+    const labels = {
+      email: 'Email',
+      studentId: 'Student ID',
+      transactionId: 'Transaction ID',
+    }
+    message = `${labels[duplicateField] || 'Value'} already exists. Please use a different one.`
+  }
+
   const payload = {
     success: false,
-    message: error.message || 'Internal server error',
+    message,
   }
 
   if (process.env.NODE_ENV !== 'production' && error.stack) {

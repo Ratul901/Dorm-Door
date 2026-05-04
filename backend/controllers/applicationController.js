@@ -2,10 +2,11 @@ import { Application } from '../models/Application.js'
 import { Dorm } from '../models/Dorm.js'
 import { Room } from '../models/Room.js'
 import { Notification } from '../models/Notification.js'
+import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 
-const APPLICATION_STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested']
+const APPLICATION_STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested', 'Waitlisted']
 
 async function notify(userId, title, message, type) {
   try {
@@ -87,7 +88,7 @@ function validateApplicationPayload(payload) {
 }
 
 function nextRoomStatus(room) {
-  if (room.status === 'Maintenance') return 'Maintenance'
+  if (room.status === 'Maintenance' || room.status === 'Unavailable') return room.status
   if (room.occupiedSeats >= room.seatCount) return 'Full'
   if (room.occupiedSeats > 0) return 'Limited'
   return 'Open'
@@ -119,8 +120,8 @@ async function validateAssignableRoom(roomId, dormId, shouldReserveSeat) {
     throw new ApiError(400, 'Assigned room does not belong to the application dorm')
   }
 
-  if (room.status === 'Maintenance') {
-    throw new ApiError(400, 'Cannot assign room in maintenance')
+  if (room.status === 'Maintenance' || room.status === 'Unavailable') {
+    throw new ApiError(400, 'Cannot assign unavailable room')
   }
 
   if (shouldReserveSeat && room.occupiedSeats >= room.seatCount) {
@@ -159,8 +160,8 @@ export const createApplication = asyncHandler(async (req, res) => {
       throw new ApiError(400, 'Selected room does not belong to the selected dorm')
     }
 
-    if (roomDoc.status === 'Maintenance') {
-      throw new ApiError(400, 'Selected room is under maintenance')
+    if (roomDoc.status === 'Maintenance' || roomDoc.status === 'Unavailable') {
+      throw new ApiError(400, 'Selected room is not available')
     }
 
     if (roomDoc.occupiedSeats >= roomDoc.seatCount || roomDoc.status === 'Full') {
@@ -241,6 +242,7 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
   }
 
   const previousStatus = application.status
+  let freedRoomId = ''
   const wasApproved = previousStatus === 'Approved'
   const isApproving = status === 'Approved'
   const nextRoomId = room === undefined ? application.room : room || undefined
@@ -261,6 +263,7 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
 
   if (wasApproved && (approvalTransition || roomChanged)) {
     await updateRoomOccupancy(application.room, -1)
+    freedRoomId = application.room
   }
 
   if (isApproving && (approvalTransition || roomChanged)) {
@@ -286,9 +289,18 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
     )
   }
 
+  const promotedApplications = freedRoomId
+    ? await promoteWaitlistedApplicantsForRoom(freedRoomId, {
+        excludeApplicationIds: [application._id],
+      })
+    : []
+
   res.json({
     success: true,
-    message: 'Application status updated',
+    message: promotedApplications.length
+      ? `Application status updated. ${promotedApplications.length} waitlisted applicant promoted.`
+      : 'Application status updated',
     application,
+    promotedApplications,
   })
 })

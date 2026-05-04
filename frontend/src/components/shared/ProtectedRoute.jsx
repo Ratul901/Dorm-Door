@@ -10,11 +10,12 @@ function ProtectedRoute({ children, roles = [] }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />
+    const loginPath = location.pathname.startsWith('/super-admin') ? '/super-admin/login' : '/login'
+    return <Navigate to={loginPath} replace state={{ from: location }} />
   }
 
   if (roles.length > 0 && !roles.includes(user.role)) {
-    const target = user.role === 'admin' ? '/admin' : '/student'
+    const target = user.role === 'superAdmin' ? '/super-admin/dashboard' : user.role === 'admin' ? '/admin' : '/student'
     return <Navigate to={target} replace />
   }
 

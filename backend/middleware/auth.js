@@ -1,8 +1,9 @@
 import jwt from 'jsonwebtoken'
 import { env } from '../config/env.js'
+import { User } from '../models/User.js'
 import { ApiError } from '../utils/apiError.js'
 
-export function protect(req, res, next) {
+export async function protect(req, res, next) {
   const authHeader = req.headers.authorization || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
 
@@ -12,9 +13,18 @@ export function protect(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, env.jwtSecret)
+    const user = await User.findById(decoded.userId).select('role accountStatus')
+    if (!user) {
+      return next(new ApiError(401, 'Unauthorized: user not found'))
+    }
+
+    if (user.accountStatus === 'blocked') {
+      return next(new ApiError(403, 'Forbidden: account is blocked'))
+    }
+
     req.user = {
-      id: decoded.userId,
-      role: decoded.role,
+      id: String(user._id),
+      role: user.role,
     }
     next()
   } catch (error) {

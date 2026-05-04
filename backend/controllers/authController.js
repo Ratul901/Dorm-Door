@@ -16,6 +16,9 @@ function sanitizeUser(user) {
     name: user.name,
     email: user.email,
     role: user.role,
+    accountStatus: user.accountStatus,
+    assignedDorm: user.assignedDorm,
+    paymentStatus: user.paymentStatus,
     gender: user.gender,
     studentId: user.studentId,
     phone: user.phone,
@@ -46,6 +49,13 @@ export const signup = asyncHandler(async (req, res) => {
 
   if (normalizedRole === 'student' && !normalizedStudentId) {
     throw new ApiError(400, 'studentId is required for student registration')
+  }
+
+  if (normalizedRole === 'student') {
+    const existingStudentId = await User.findOne({ studentId: normalizedStudentId })
+    if (existingStudentId) {
+      throw new ApiError(409, 'Student ID already exists. Please use a different student ID.')
+    }
   }
 
   const user = await User.create({
@@ -81,6 +91,10 @@ export const login = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email: normalizedEmail }).select('+password')
   if (!user) {
     throw new ApiError(401, 'Invalid email or password')
+  }
+
+  if (user.accountStatus === 'blocked') {
+    throw new ApiError(403, 'This account is blocked. Please contact the housing office.')
   }
 
   const isMatch = await user.comparePassword(password)

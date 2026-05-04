@@ -68,6 +68,12 @@ export function AuthProvider({ children }) {
       }
 
       if (token === DEMO_TOKEN) {
+        if (user?.role === 'superAdmin') {
+          localStorage.removeItem(TOKEN_KEY)
+          localStorage.removeItem(USER_KEY)
+          setToken(null)
+          setUser(null)
+        }
         setLoading(false)
         return
       }

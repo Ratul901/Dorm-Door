@@ -8,6 +8,7 @@ import { toSafeExternalUrl } from '../../utils/url'
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { key: 'applications', label: 'Room Applications', icon: 'domain' },
+  { key: 'payments', label: 'Payments', icon: 'payments' },
   { key: 'maintenance', label: 'Maintenance', icon: 'build' },
   { key: 'documents', label: 'Documents', icon: 'description' },
   { key: 'reviews', label: 'Reviews', icon: 'rate_review' },
@@ -17,6 +18,7 @@ const MENU = [
 const PAGE_TO_PATH = {
   dashboard: '/student',
   applications: '/student/applications',
+  payments: '/student/payments',
   maintenance: '/student/maintenance',
   documents: '/student/documents',
   reviews: '/student/reviews',
@@ -863,12 +865,23 @@ function RoomApplicationsPage() {
   const navigate = useNavigate()
   const { token } = useAuth()
   const [applications, setApplications] = useState([])
+  const [transactions, setTransactions] = useState([])
   const [expandedApplicationId, setExpandedApplicationId] = useState(null)
+  const [paymentApplication, setPaymentApplication] = useState(null)
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    paymentMethod: 'bKash',
+    transactionId: '',
+    receiptUrl: '',
+  })
+  const [paymentSaving, setPaymentSaving] = useState(false)
+  const [paymentMessage, setPaymentMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_student_applications'
+  const demoTransactionStorageKey = 'dormdoor_demo_student_transactions'
 
   const parseDemoApplications = (raw) => {
     if (!raw) return null
@@ -887,6 +900,8 @@ function RoomApplicationsPage() {
 
       if (isDemoUser) {
         const stored = parseDemoApplications(localStorage.getItem(demoStorageKey))
+        localStorage.removeItem(demoTransactionStorageKey)
+        setTransactions([])
         if (stored) {
           setApplications(stored)
           setLoading(false)
@@ -919,8 +934,12 @@ function RoomApplicationsPage() {
       }
 
       try {
-        const { data } = await api.get('/applications')
-        setApplications(data.applications || [])
+        const [{ data: applicationData }, { data: transactionData }] = await Promise.all([
+          api.get('/applications'),
+          api.get('/transactions'),
+        ])
+        setApplications(applicationData.applications || [])
+        setTransactions(transactionData.transactions || [])
       } catch (requestError) {
         setError(requestError.response?.data?.message || 'Failed to load applications')
       } finally {
@@ -1012,10 +1031,98 @@ function RoomApplicationsPage() {
     })
   }
 
+  const latestTransactionForApplication = (applicationId) => {
+    return transactions.find((transaction) => {
+      const transactionApplicationId =
+        typeof transaction.application === 'string'
+          ? transaction.application
+          : transaction.application?._id
+      return transactionApplicationId === applicationId
+    })
+  }
+
+  const paymentStatusForApplication = (application) => {
+    const latestTransaction = latestTransactionForApplication(application._id)
+    return latestTransaction?.status || application.paymentStatus || 'Not Submitted'
+  }
+
+  const openPaymentForm = (application) => {
+    if (isDemoUser) {
+      setPaymentMessage('Payment submission needs a real student account connected to the backend. Demo payments are not sent to super admin.')
+      return
+    }
+
+    const latestTransaction = latestTransactionForApplication(application._id)
+    if (latestTransaction?.status === 'Pending') {
+      setPaymentMessage('This application already has a pending payment waiting for admin review.')
+      return
+    }
+
+    setPaymentApplication(application)
+    setPaymentMessage('')
+    setPaymentForm({
+      amount: application.room?.priceMonthly || '',
+      paymentMethod: 'bKash',
+      transactionId: '',
+      receiptUrl: '',
+    })
+  }
+
+  const closePaymentForm = () => {
+    setPaymentApplication(null)
+    setPaymentForm({
+      amount: '',
+      paymentMethod: 'bKash',
+      transactionId: '',
+      receiptUrl: '',
+    })
+  }
+
+  const handlePaymentFormChange = (event) => {
+    const { name, value } = event.target
+    setPaymentForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handlePaymentSubmit = async (event) => {
+    event.preventDefault()
+    if (!paymentApplication?._id) return
+
+    setPaymentSaving(true)
+    setPaymentMessage('')
+
+    try {
+      if (isDemoUser) {
+        throw new Error('Payment submission needs a real student account connected to the backend.')
+      }
+
+      const { data } = await api.post('/transactions', {
+        application: paymentApplication._id,
+        amount: Number(paymentForm.amount || 0),
+        paymentMethod: paymentForm.paymentMethod,
+        transactionId: paymentForm.transactionId,
+        receiptUrl: paymentForm.receiptUrl,
+      })
+
+      setTransactions((prev) => [data.transaction, ...prev])
+      setApplications((prev) =>
+        prev.map((item) => (item._id === paymentApplication._id ? { ...item, paymentStatus: 'Pending' } : item)),
+      )
+
+      setPaymentMessage('Payment submitted. Status is Pending until super admin reviews it.')
+      closePaymentForm()
+    } catch (requestError) {
+      setPaymentMessage(requestError.response?.data?.message || requestError.message || 'Failed to submit payment.')
+    } finally {
+      setPaymentSaving(false)
+    }
+  }
+
   const Row = ({ item, faded = false }) => {
     const dormName = item.dorm?.name || 'Dorm not assigned'
     const roomType = item.room?.type || item.preferences?.preferredRoomType || 'Not specified'
     const statusText = item.status || 'Pending'
+    const paymentStatus = paymentStatusForApplication(item)
+    const latestTransaction = latestTransactionForApplication(item._id)
     const block = item.dorm?.block ? ` - ${item.dorm.block}` : ''
     const isExpanded = expandedApplicationId === item._id
 
@@ -1066,6 +1173,8 @@ function RoomApplicationsPage() {
                   <p><span className="font-bold">Request ID:</span> {item._id ? String(item._id).slice(-8).toUpperCase() : 'Not available'}</p>
                   <p><span className="font-bold">Room Number:</span> {item.room?.roomNumber || 'To be assigned'}</p>
                   <p><span className="font-bold">Monthly Fee:</span> {item.room?.priceMonthly ? `BDT ${item.room.priceMonthly}` : 'Not available'}</p>
+                  <p><span className="font-bold">Payment Status:</span> {paymentStatus}</p>
+                  <p><span className="font-bold">Transaction ID:</span> {latestTransaction?.transactionId || 'Not submitted'}</p>
                   <p><span className="font-bold">Move-In Preference:</span> {formatDate(item.preferences?.moveInDate)}</p>
                 </div>
               </div>
@@ -1108,6 +1217,15 @@ function RoomApplicationsPage() {
                   Upload Updated Documents
                 </button>
               ) : null}
+              {statusText === 'Approved' && !['Pending', 'Approved', 'Paid'].includes(paymentStatus) ? (
+                <button
+                  type="button"
+                  onClick={() => openPaymentForm(item)}
+                  className="rounded-full bg-[#0c56d0] px-4 py-2 font-bold text-white"
+                >
+                  Submit Payment
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1133,6 +1251,11 @@ function RoomApplicationsPage() {
       {isDemoUser ? (
         <p className="mt-6 rounded-xl bg-[#eef3ff] px-4 py-3 text-sm font-semibold text-[#325ca8]">
           Demo mode: new applications are stored locally in this browser.
+        </p>
+      ) : null}
+      {paymentMessage ? (
+        <p className="mt-6 rounded-xl bg-[#eef3ff] px-4 py-3 text-sm font-semibold text-[#325ca8]">
+          {paymentMessage}
         </p>
       ) : null}
 
@@ -1195,6 +1318,450 @@ function RoomApplicationsPage() {
           </section>
         </>
       ) : null}
+
+      {paymentApplication ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <form onSubmit={handlePaymentSubmit} className="w-full max-w-xl rounded-[24px] bg-white p-7 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-[26px] font-extrabold tracking-[-0.04em]">Submit Payment</h3>
+                <p className="mt-2 text-sm text-[#546067]">
+                  Payment will stay Pending until an admin approves it.
+                </p>
+              </div>
+              <button type="button" onClick={closePaymentForm} className="rounded-xl px-3 py-2 text-sm font-bold text-[#546067] hover:bg-[#f2efee]">
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Amount
+                <input
+                  name="amount"
+                  type="number"
+                  min="1"
+                  value={paymentForm.amount}
+                  onChange={handlePaymentFormChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                  required
+                />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Payment Method
+                <select
+                  name="paymentMethod"
+                  value={paymentForm.paymentMethod}
+                  onChange={handlePaymentFormChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                >
+                  <option value="bKash">bKash</option>
+                  <option value="Nagad">Nagad</option>
+                  <option value="Rocket">Rocket</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cash Deposit">Cash Deposit</option>
+                </select>
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary sm:col-span-2">
+                Transaction ID
+                <input
+                  name="transactionId"
+                  value={paymentForm.transactionId}
+                  onChange={handlePaymentFormChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                  required
+                />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary sm:col-span-2">
+                Receipt URL
+                <input
+                  name="receiptUrl"
+                  value={paymentForm.receiptUrl}
+                  onChange={handlePaymentFormChange}
+                  placeholder="Optional screenshot or receipt link"
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={closePaymentForm} className="rounded-xl px-5 py-3 font-bold text-[#546067] hover:bg-[#f2efee]">
+                Cancel
+              </button>
+              <button type="submit" disabled={paymentSaving} className="rounded-xl bg-[#0c56d0] px-6 py-3 font-bold text-white disabled:opacity-70">
+                {paymentSaving ? 'Submitting...' : 'Submit Payment'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </PageFrame>
+  )
+}
+
+function PaymentsPage() {
+  const { token } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const demoApplicationStorageKey = 'dormdoor_demo_student_applications'
+  const demoTransactionStorageKey = 'dormdoor_demo_student_transactions'
+
+  const [applications, setApplications] = useState([])
+  const [transactions, setTransactions] = useState([])
+  const [selectedApplicationId, setSelectedApplicationId] = useState('')
+  const [form, setForm] = useState({
+    amount: '',
+    paymentMethod: 'bKash',
+    transactionId: '',
+    receiptUrl: '',
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const parseStoredList = (key) => {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  const seedDemoApplications = () => {
+    return [
+      {
+        _id: 'demo-app-payment-1',
+        dorm: { name: 'The Zenith Suite', block: 'Block A' },
+        room: { roomNumber: '402-A', type: 'Premium Studio', priceMonthly: 10500 },
+        status: 'Approved',
+        paymentStatus: 'Not Submitted',
+        createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        preferences: { preferredRoomType: 'Premium Studio' },
+      },
+    ]
+  }
+
+  const loadPayments = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const storedApplications = parseStoredList(demoApplicationStorageKey)
+        localStorage.removeItem(demoTransactionStorageKey)
+        const nextApplications = storedApplications || seedDemoApplications()
+        if (!storedApplications) {
+          localStorage.setItem(demoApplicationStorageKey, JSON.stringify(nextApplications))
+        }
+        setApplications(nextApplications)
+        setTransactions([])
+        setSelectedApplicationId((current) => current || nextApplications[0]?._id || '')
+        return
+      }
+
+      const [{ data: applicationData }, { data: transactionData }] = await Promise.all([
+        api.get('/applications'),
+        api.get('/transactions'),
+      ])
+
+      const nextApplications = applicationData.applications || []
+      setApplications(nextApplications)
+      setTransactions(transactionData.transactions || [])
+      setSelectedApplicationId((current) => current || nextApplications[0]?._id || '')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load payment data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPayments()
+  }, [isDemoUser, token])
+
+  const selectedApplication = useMemo(
+    () => applications.find((item) => item._id === selectedApplicationId) || applications[0] || null,
+    [applications, selectedApplicationId],
+  )
+
+  useEffect(() => {
+    if (!selectedApplication) return
+    setForm((prev) => ({
+      ...prev,
+      amount: prev.amount || selectedApplication.room?.priceMonthly || '',
+    }))
+  }, [selectedApplication?._id])
+
+  const latestTransactionByApplication = useMemo(() => {
+    return transactions.reduce((acc, transaction) => {
+      const applicationId =
+        typeof transaction.application === 'string'
+          ? transaction.application
+          : transaction.application?._id
+      if (applicationId && !acc[applicationId]) {
+        acc[applicationId] = transaction
+      }
+      return acc
+    }, {})
+  }, [transactions])
+
+  const selectedTransaction = selectedApplication ? latestTransactionByApplication[selectedApplication._id] : null
+  const canSubmitPayment =
+    selectedApplication &&
+    selectedApplication.status !== 'Rejected' &&
+    !['Pending', 'Approved', 'Paid'].includes(selectedTransaction?.status || selectedApplication.paymentStatus)
+
+  const stats = useMemo(() => {
+    return {
+      total: transactions.length,
+      pending: transactions.filter((item) => item.status === 'Pending').length,
+      approved: transactions.filter((item) => item.status === 'Approved').length,
+      rejected: transactions.filter((item) => item.status === 'Rejected').length,
+    }
+  }, [transactions])
+
+  const formatDateTime = (value) => {
+    if (!value) return 'N/A'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'N/A'
+    return parsed.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const statusClass = (status) => {
+    if (status === 'Approved') return 'bg-[#ecf7ef] text-[#23945b]'
+    if (status === 'Rejected') return 'bg-[#feecef] text-[#d33434]'
+    if (status === 'Pending') return 'bg-[#fff2de] text-[#b7791f]'
+    return 'bg-[#e8f0f7] text-[#4e6875]'
+  }
+
+  const handleChange = (event) => {
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleApplicationChange = (event) => {
+    const applicationId = event.target.value
+    const nextApplication = applications.find((item) => item._id === applicationId)
+    setSelectedApplicationId(applicationId)
+    setForm((prev) => ({
+      ...prev,
+      amount: nextApplication?.room?.priceMonthly || '',
+      transactionId: '',
+      receiptUrl: '',
+    }))
+    setMessage('')
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    if (!selectedApplication?._id || !canSubmitPayment) return
+    if (isDemoUser) {
+      setError('Payment submission needs a real student account connected to the backend. Demo payments are not sent to super admin.')
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+    setError('')
+
+    try {
+      const { data } = await api.post('/transactions', {
+        application: selectedApplication._id,
+        amount: Number(form.amount || 0),
+        paymentMethod: form.paymentMethod,
+        transactionId: form.transactionId.trim(),
+        receiptUrl: form.receiptUrl.trim(),
+      })
+
+      setTransactions((prev) => [data.transaction, ...prev])
+      setApplications((prev) =>
+        prev.map((item) => (item._id === selectedApplication._id ? { ...item, paymentStatus: 'Pending' } : item)),
+      )
+
+      setForm((prev) => ({ ...prev, transactionId: '', receiptUrl: '' }))
+      setMessage('Payment submitted successfully. Current status: Pending with super admin.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to submit payment')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <PageFrame placeholder="Search payments...">
+      <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Student Billing</p>
+          <h1 className="mt-3 text-[48px] font-extrabold leading-none tracking-[-0.06em]">Payments</h1>
+          <p className="mt-4 max-w-[760px] text-[16px] leading-8 text-[#546067]">
+            Submit payment information and follow approval status from the housing office.
+          </p>
+        </div>
+        <div className="grid grid-cols-4 gap-3 rounded-[22px] bg-white p-3 ring-1 ring-[#efebea]">
+          {[
+            ['Total', stats.total],
+            ['Pending', stats.pending],
+            ['Approved', stats.approved],
+            ['Rejected', stats.rejected],
+          ].map(([label, value]) => (
+            <div key={label} className="min-w-[88px] rounded-[16px] bg-[#f7f4f3] px-4 py-3 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7280]">{label}</p>
+              <p className="mt-1 text-[22px] font-extrabold text-[#0c56d0]">{loading ? '...' : value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {message ? <p className="mt-6 rounded-xl bg-[#eef3ff] px-4 py-3 text-sm font-semibold text-[#325ca8]">{message}</p> : null}
+      {error ? <p className="mt-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+      {isDemoUser ? (
+        <p className="mt-6 rounded-xl bg-[#fff7e6] px-4 py-3 text-sm font-semibold text-[#9a6510]">
+          Demo mode cannot send payments to the super admin panel. Log in with a real student account to submit a payment for approval.
+        </p>
+      ) : null}
+
+      <div className="mt-8 grid gap-8 xl:grid-cols-[0.9fr_1.1fr]">
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <h2 className="text-[26px] font-extrabold tracking-[-0.04em]">Submit Transaction</h2>
+
+          {loading ? (
+            <p className="mt-5 text-sm text-[#546067]">Loading payment options...</p>
+          ) : applications.length === 0 ? (
+            <p className="mt-5 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No applications found.</p>
+          ) : (
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+              <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Application
+                <select
+                  value={selectedApplication?._id || ''}
+                  onChange={handleApplicationChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                >
+                  {applications.map((application) => (
+                    <option key={application._id} value={application._id}>
+                      {application.dorm?.name || 'Dorm'} - {String(application._id).slice(-8).toUpperCase()} ({application.status})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="rounded-[18px] bg-[#f7f4f3] p-4 text-sm text-[#39424e]">
+                <p><span className="font-bold">Dorm:</span> {selectedApplication?.dorm?.name || 'N/A'}</p>
+                <p><span className="font-bold">Room:</span> {selectedApplication?.room?.roomNumber || selectedApplication?.room?.type || 'To be assigned'}</p>
+                <p><span className="font-bold">Current payment:</span> {selectedTransaction?.status || selectedApplication?.paymentStatus || 'Not Submitted'}</p>
+                {selectedTransaction?.rejectionReason ? (
+                  <p><span className="font-bold">Rejection reason:</span> {selectedTransaction.rejectionReason}</p>
+                ) : null}
+              </div>
+
+              <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Amount
+                <input
+                  name="amount"
+                  type="number"
+                  min="1"
+                  value={form.amount}
+                  onChange={handleChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                  required
+                />
+              </label>
+
+              <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Payment Method
+                <select
+                  name="paymentMethod"
+                  value={form.paymentMethod}
+                  onChange={handleChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                >
+                  <option value="bKash">bKash</option>
+                  <option value="Nagad">Nagad</option>
+                  <option value="Rocket">Rocket</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cash Deposit">Cash Deposit</option>
+                </select>
+              </label>
+
+              <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Transaction ID
+                <input
+                  name="transactionId"
+                  value={form.transactionId}
+                  onChange={handleChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                  required
+                />
+              </label>
+
+              <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Receipt URL
+                <input
+                  name="receiptUrl"
+                  value={form.receiptUrl}
+                  onChange={handleChange}
+                  placeholder="Optional screenshot or receipt link"
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={saving || !canSubmitPayment}
+                className="w-full rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? 'Submitting...' : 'Submit Payment'}
+              </button>
+            </form>
+          )}
+        </section>
+
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <h2 className="text-[26px] font-extrabold tracking-[-0.04em]">Transaction History</h2>
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead>
+                <tr className="border-b border-[#efebea]">
+                  {['Reference', 'Dorm', 'Amount', 'Method', 'Transaction ID', 'Date', 'Status'].map((head) => (
+                    <th key={head} className="px-3 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#6b7280]">{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-[#546067]">Loading transactions...</td></tr>
+                ) : transactions.length === 0 ? (
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-[#546067]">No transactions submitted yet.</td></tr>
+                ) : transactions.map((transaction) => (
+                  <tr key={transaction._id} className="border-b border-[#f2efee]">
+                    <td className="px-3 py-4 text-sm font-bold">{String(transaction.application?._id || transaction.application || transaction._id).slice(-8).toUpperCase()}</td>
+                    <td className="px-3 py-4 text-sm">{transaction.dorm?.name || 'N/A'}</td>
+                    <td className="px-3 py-4 text-sm">BDT {Number(transaction.amount || 0).toLocaleString()}</td>
+                    <td className="px-3 py-4 text-sm">{transaction.paymentMethod}</td>
+                    <td className="px-3 py-4 text-sm">{transaction.transactionId}</td>
+                    <td className="px-3 py-4 text-sm">{formatDateTime(transaction.createdAt)}</td>
+                    <td className="px-3 py-4">
+                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusClass(transaction.status)}`}>{transaction.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </PageFrame>
   )
 }
@@ -3030,6 +3597,8 @@ export default function StudentPortal() {
     switch (activePage) {
       case 'applications':
         return <RoomApplicationsPage />
+      case 'payments':
+        return <PaymentsPage />
       case 'maintenance':
         return <MaintenancePage />
       case 'documents':

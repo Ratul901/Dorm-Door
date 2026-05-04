@@ -1,11 +1,16 @@
 import { Dorm } from '../models/Dorm.js'
 import { Room } from '../models/Room.js'
+import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 
 function deriveStatus(seatCount, occupiedSeats, requestedStatus) {
-  if (requestedStatus === 'Maintenance') {
-    return 'Maintenance'
+  if (requestedStatus === 'Maintenance' || requestedStatus === 'Unavailable') {
+    return requestedStatus
+  }
+
+  if (requestedStatus === 'Full') {
+    return 'Full'
   }
 
   if (occupiedSeats >= seatCount) {
@@ -67,7 +72,16 @@ export const createRoom = asyncHandler(async (req, res) => {
     roomNumber,
   })
 
-  res.status(201).json({ success: true, message: 'Room created', room })
+  const promotedApplications = await promoteWaitlistedApplicantsForRoom(room._id)
+
+  res.status(201).json({
+    success: true,
+    message: promotedApplications.length
+      ? `Room created. ${promotedApplications.length} waitlisted applicant promoted.`
+      : 'Room created',
+    room,
+    promotedApplications,
+  })
 })
 
 export const updateRoom = asyncHandler(async (req, res) => {
@@ -90,7 +104,16 @@ export const updateRoom = asyncHandler(async (req, res) => {
     runValidators: true,
   })
 
-  res.json({ success: true, message: 'Room updated', room: updated })
+  const promotedApplications = await promoteWaitlistedApplicantsForRoom(updated._id)
+
+  res.json({
+    success: true,
+    message: promotedApplications.length
+      ? `Room updated. ${promotedApplications.length} waitlisted applicant promoted.`
+      : 'Room updated',
+    room: updated,
+    promotedApplications,
+  })
 })
 
 export const deleteRoom = asyncHandler(async (req, res) => {

@@ -15,6 +15,12 @@ const initialState = {
   university: '',
 }
 
+function dashboardPathForRole(role) {
+  if (role === 'superAdmin') return '/super-admin/dashboard'
+  if (role === 'admin') return '/admin'
+  return '/student'
+}
+
 function SignupPage() {
   const { signup, user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
@@ -24,7 +30,7 @@ function SignupPage() {
   const [loading, setLoading] = useState(false)
 
   if (isAuthenticated && user) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/student'} replace />
+    return <Navigate to={dashboardPathForRole(user.role)} replace />
   }
 
   const handleChange = (event) => {
@@ -39,7 +45,7 @@ function SignupPage() {
 
     try {
       const createdUser = await signup(form)
-      navigate(createdUser.role === 'admin' ? '/admin' : '/student', { replace: true })
+      navigate(dashboardPathForRole(createdUser.role), { replace: true })
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Signup failed')
     } finally {
