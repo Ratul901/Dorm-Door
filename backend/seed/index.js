@@ -42,6 +42,26 @@ const roomSeed = [
   },
 ]
 
+async function upsertSeedUser(email, payload) {
+  const normalizedEmail = String(email).toLowerCase()
+  const user = await User.findOne({ email: normalizedEmail }).select('+password')
+
+  if (!user) {
+    return User.create({
+      ...payload,
+      email: normalizedEmail,
+    })
+  }
+
+  Object.assign(user, {
+    ...payload,
+    email: normalizedEmail,
+  })
+
+  await user.save()
+  return user
+}
+
 async function seed() {
   await connectDatabase()
 
@@ -57,50 +77,44 @@ async function seed() {
     Transaction.deleteMany({}),
   ])
 
-  let superAdmin = await User.findOne({ email: 'superadmin@dormdoor.com' })
-  if (!superAdmin) {
-    superAdmin = await User.create({
-      name: 'Super Admin',
-      email: 'superadmin@dormdoor.com',
-      password: 'Super123!',
-      role: 'superAdmin',
-      phone: '+8801111111111',
-      university: 'DormDoor University Network',
-    })
-  }
+  const superAdmin = await upsertSeedUser('superadmin@dormdoor.com', {
+    name: 'Super Admin',
+    password: 'Super123!',
+    role: 'superAdmin',
+    accountStatus: 'active',
+    paymentStatus: 'Not Submitted',
+    phone: '+8801111111111',
+    university: 'DormDoor University Network',
+  })
 
-  let admin = await User.findOne({ email: 'admin@dormdoor.com' })
-  if (!admin) {
-    admin = await User.create({
-      name: 'Dorm Admin',
-      email: 'admin@dormdoor.com',
-      password: 'Admin123!',
-      role: 'admin',
-      phone: '+8801000000000',
-      university: 'DormDoor University Network',
-    })
-  }
+  const admin = await upsertSeedUser('admin@dormdoor.com', {
+    name: 'Dorm Admin',
+    password: 'Admin123!',
+    role: 'admin',
+    accountStatus: 'active',
+    paymentStatus: 'Not Submitted',
+    phone: '+8801000000000',
+    university: 'DormDoor University Network',
+  })
 
-  let student = await User.findOne({ email: 'student@dormdoor.com' })
-  if (!student) {
-    student = await User.create({
-      name: 'Alex Student',
-      email: 'student@dormdoor.com',
-      password: 'Student123!',
-      role: 'student',
-      gender: 'Male',
-      studentId: 'DD-2026-1001',
-      phone: '+8801999999999',
-      department: 'Computer Science',
-      university: 'DormDoor University Network',
-      address: 'Dhaka, Bangladesh',
-      emergencyContact: {
-        name: 'Rafiq Hasan',
-        relation: 'Guardian',
-        phone: '+8801888888888',
-      },
-    })
-  }
+  const student = await upsertSeedUser('student@dormdoor.com', {
+    name: 'Alex Student',
+    password: 'Student123!',
+    role: 'student',
+    accountStatus: 'active',
+    paymentStatus: 'Pending',
+    gender: 'Male',
+    studentId: 'DD-2026-1001',
+    phone: '+8801999999999',
+    department: 'Computer Science',
+    university: 'DormDoor University Network',
+    address: 'Dhaka, Bangladesh',
+    emergencyContact: {
+      name: 'Rafiq Hasan',
+      relation: 'Guardian',
+      phone: '+8801888888888',
+    },
+  })
 
   const createdDorms = await Dorm.insertMany(
     dormCatalog.map((dorm) => ({
